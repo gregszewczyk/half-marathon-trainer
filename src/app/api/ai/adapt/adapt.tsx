@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PerplexityAIService, SessionFeedback } from '@/lib/ai/perplexity-service';
+import { PerplexityAIService } from '@/lib/ai/perplexity_service';
 
 const aiService = new PerplexityAIService();
 

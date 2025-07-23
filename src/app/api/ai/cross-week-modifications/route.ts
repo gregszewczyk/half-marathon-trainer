@@ -35,21 +35,21 @@ export async function POST(request: NextRequest) {
     }
 
     // Save to database (this would be your actual implementation)
-    /*
-    const savedModifications = await prisma.aiModification.createMany({
-      data: modifications.map(mod => ({
-        currentWeek,
-        targetWeek: mod.week,
-        targetDay: mod.day,
-        modificationType: mod.modificationType,
-        originalSessionData: JSON.stringify(mod.originalSession),
-        newSessionData: JSON.stringify(mod.newSession),
-        explanation: mod.explanation,
-        selectedAlternative,
-        appliedAt: new Date(appliedAt),
-      }))
-    });
-    */
+
+await prisma.crossWeekModification.createMany({
+  data: modifications.map(mod => ({
+    currentWeek,
+    targetWeek: mod.week,
+    targetDay: mod.day,
+    modificationType: mod.modificationType,
+    originalSessionData: JSON.stringify(mod.originalSession),
+    newSessionData: JSON.stringify(mod.newSession),
+    explanation: mod.explanation,
+    selectedAlternative: selectedAlternative ?? null, // Convert undefined to null
+    appliedAt: new Date(appliedAt),
+  }))
+});
+    
 
     // For demo purposes, we'll just return success
     const response = {

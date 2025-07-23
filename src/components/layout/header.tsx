@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { useSession, signIn, signOut } from 'next-auth/react'
-import { Button } from '@/components/ui/Button'
+import { Button } from '@/components/ui/button'
 import { 
   HomeIcon, 
   CalendarIcon, 

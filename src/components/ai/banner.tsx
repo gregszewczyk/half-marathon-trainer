@@ -1,6 +1,6 @@
 import React from 'react';
-import { TrainingAdaptation } from '@/lib/ai/perplexity-service';
-import { Button } from '@/components/ui/Button';
+import { TrainingAdaptation } from '@/lib/ai/perplexity_service';
+import { Button } from '@/components/ui/button'
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { cn } from '@/lib/utils/cn';
 

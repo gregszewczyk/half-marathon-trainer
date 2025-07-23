@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { SessionFeedback, TrainingAdaptation } from '@/lib/ai/perplexity-service';
+import { SessionFeedback, TrainingAdaptation } from '@/lib/ai/perplexity_service';
 
 export function useAIAdaptations() {
   const [isProcessing, setIsProcessing] = useState(false);

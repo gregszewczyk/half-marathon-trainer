@@ -118,3 +118,18 @@ model ModifiedSession {
   
   @@map("modified_sessions")
 }
+
+model CrossWeekModification {
+  id                   String   @id @default(cuid())
+  currentWeek          Int      // Week that triggered the modification
+  targetWeek           Int      // Week being modified
+  targetDay            String   // Day being modified
+  modificationType     String   // Type of change
+  originalSessionData  String   // JSON of original session
+  newSessionData       String   // JSON of modified session
+  explanation          String   // AI reasoning
+  selectedAlternative  Int?     // Which option user chose
+  appliedAt           DateTime @default(now())
+
+  @@map("cross_week_modifications")
+}
