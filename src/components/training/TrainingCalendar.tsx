@@ -117,6 +117,20 @@ const AITrainingCalendar = () => {
   const [showEnhancedAiModal, setShowEnhancedAiModal] = useState(false);
   const [selectedAlternative, setSelectedAlternative] = useState<number>(0);
 
+  // Add this after your existing state variables
+const [isMobile, setIsMobile] = useState(false);
+
+useEffect(() => {
+  const checkMobile = () => {
+    setIsMobile(window.innerWidth <= 640);
+  };
+  
+  checkMobile();
+  window.addEventListener('resize', checkMobile);
+  
+  return () => window.removeEventListener('resize', checkMobile);
+}, []);
+
   // Time conversion functions
   const timeToSeconds = (timeStr: string): number => {
     const parts = timeStr.split(':');
@@ -1228,9 +1242,13 @@ const AITrainingCalendar = () => {
       <div className="px-6 pt-8 pb-6">
         <Card className="bg-gray-800/60 border-gray-600 backdrop-blur-sm">
           <CardContent className="p-6">
-            <div className="grid grid-cols-5 gap-8">
-              <div className="text-center">
-                <label className="block text-xs text-gray-400 mb-3 font-medium">GOAL TIME</label>
+            <div style={{
+  display: 'grid',
+  gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(5, 1fr)',
+  gap: isMobile ? '12px' : '32px'
+}}>
+<div className="text-center" style={{ gridColumn: isMobile ? 'span 2' : 'span 1' }}>
+  <label className="block text-xs text-gray-400 mb-3 font-medium">GOAL TIME</label>
                 <input
                   type="text"
                   value={goalTime}
@@ -1272,10 +1290,21 @@ const AITrainingCalendar = () => {
       {/* Week Navigation */}
       <div className="px-6 pt-8 pb-6">
         <div className="max-w-6xl mx-auto">
-          <div className="flex items-center justify-between mb-6">
-            <h1 style={{ fontSize: '24px', fontWeight: 'bold' }}>
-              AI Training Calendar - Week {currentWeek}
-            </h1>
+          <div style={{
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  marginBottom: '24px',
+  flexDirection: isMobile ? 'column' : 'row',
+  gap: isMobile ? '16px' : '0'
+}}>
+  <h1 style={{ 
+    fontSize: isMobile ? '20px' : '24px', 
+    fontWeight: 'bold',
+    textAlign: isMobile ? 'center' : 'left'
+  }}>
+    AI Training Calendar - Week {currentWeek}
+  </h1>
             <div className="flex items-center gap-4">
               <button
                 onClick={() => setCurrentWeek(prev => Math.max(1, prev - 1))}
@@ -1305,7 +1334,11 @@ const AITrainingCalendar = () => {
           <div className="mx-6 mb-8">
             <Card className="bg-gray-800/60 border-gray-600 backdrop-blur-sm">
               <CardContent className="p-6">
-                <div className="grid grid-cols-3 gap-8">
+                <div style={{
+  display: 'grid',
+  gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
+  gap: isMobile ? '16px' : '32px'
+}}>
                   <div className="text-center">
                     <div className="text-xs text-gray-400 mb-3 font-medium">TRAINING FOCUS</div>
                     <div className="text-lg font-bold text-white">
@@ -1333,12 +1366,12 @@ const AITrainingCalendar = () => {
           </div>
 
           {/* Calendar Grid */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(7, 1fr)',
-            gap: '16px',
-            minHeight: '480px'
-          }}>
+<div style={{
+  display: 'grid',
+  gridTemplateColumns: isMobile ? '1fr' : 'repeat(7, 1fr)',
+  gap: '16px',
+  minHeight: isMobile ? 'auto' : '480px'
+}}>
             {days.map((day) => (
               <div
                 key={day}
@@ -1439,16 +1472,15 @@ const AITrainingCalendar = () => {
       {/* AI Rebalancing Modal */}
       {showRebalanceModal && rebalanceResult && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div style={{ 
-            backgroundColor: 'var(--surface-color)', 
-            borderRadius: '8px', 
-            padding: '24px', 
-            maxWidth: '600px', 
-            width: '100%',
-            border: '1px solid #3a3a4a',
-            maxHeight: '80vh',
-            overflowY: 'auto'
-          }}>
+<div style={{ 
+  backgroundColor: 'var(--surface-color)', 
+  borderRadius: '8px', 
+  padding: '24px', 
+  maxWidth: isMobile ? '95%' : '600px', 
+  width: '100%',
+  border: '1px solid #3a3a4a',
+  margin: isMobile ? '8px' : '0'
+}}>
             <div className="flex items-center gap-3 mb-6">
               <div className="w-6 h-6 bg-cyan-400 rounded-full flex items-center justify-center text-xs font-bold text-black">
                 AI
@@ -1536,12 +1568,12 @@ const AITrainingCalendar = () => {
               </button>
             </div>
 
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(3, 1fr)',
-              gap: '16px',
-              marginBottom: '24px'
-            }}>
+<div style={{
+  display: 'grid',
+  gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
+  gap: '16px',
+  marginBottom: '24px'
+}}>
               <div>
                 <div style={{ fontSize: '12px', color: '#9ca3af' }}>DISTANCE</div>
                 <div style={{ fontSize: '16px', fontWeight: 'bold' }} className="flex items-center gap-2">
@@ -1667,7 +1699,11 @@ const AITrainingCalendar = () => {
             </div>
             
             <form onSubmit={handleFeedbackSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div style={{ 
+  display: 'grid', 
+  gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', 
+  gap: '16px' 
+}}>
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', color: '#9ca3af', marginBottom: '8px' }}>
                     Completed
@@ -1696,7 +1732,11 @@ const AITrainingCalendar = () => {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+<div style={{ 
+  display: 'grid', 
+  gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', 
+  gap: '16px' 
+}}>
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', color: '#9ca3af', marginBottom: '8px' }}>
                     Difficulty (1-10): <span className="text-cyan-400 font-bold">{difficultyValue}</span>
@@ -1787,7 +1827,12 @@ const AITrainingCalendar = () => {
                 />
               </div>
 
-              <div className="flex gap-3 mt-4">
+<div style={{ 
+  display: 'flex',
+  flexDirection: isMobile ? 'column' : 'row',
+  gap: '12px',
+  marginTop: '16px'
+}}>
                 <button
                   type="submit"
                   className="px-4 py-2 rounded text-white flex items-center gap-2"
