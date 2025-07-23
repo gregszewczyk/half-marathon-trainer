@@ -3,13 +3,10 @@ const nextConfig = {
   experimental: {
     appDir: true,
     serverComponentsExternalPackages: ['@prisma/client', 'garminconnect'],
+        instrumentationHook: true, // just add this line here
   },
     eslint: {
     ignoreDuringBuilds: true,
-  },
-    experimental: {
-    ...nextConfig.experimental,
-    instrumentationHook: true,
   },
     typescript: {
     ignoreBuildErrors: true,
