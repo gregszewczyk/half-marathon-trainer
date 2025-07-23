@@ -23,7 +23,8 @@ export async function POST(request: Request) {
       plannedDistance,
       plannedPace,
       plannedTime,
-      day
+      day,
+      userId = 'default' // Add userId support
     }: {
       sessionId: string;
       weekNumber: number;
@@ -39,34 +40,38 @@ export async function POST(request: Request) {
       plannedPace?: string;
       plannedTime?: string;
       day?: string;
+      userId?: string;
     } = body;
 
-    // Ensure we have a default training plan
+    // Ensure we have a training plan for this user
     let trainingPlan = await prisma.trainingPlan.findFirst({
-      where: { userId: "default_user" }
+      where: { userId: userId }
     });
 
     if (!trainingPlan) {
       trainingPlan = await prisma.trainingPlan.create({
         data: {
-          userId: "default_user",
+          userId: userId,
           goalTime: "2:00:00",
           predictedTime: "2:00:00",
           currentWeek: 1,
           raceDate: new Date('2025-10-12')
         }
       });
-      console.log('Created default training plan:', trainingPlan.id);
+      console.log(`Created training plan for user ${userId}:`, trainingPlan.id);
     }
 
     // Determine the day from sessionId if not provided
     const sessionDay = day || sessionId.split('-')[0] || 'monday';
 
-    // Check if feedback already exists for this session
+    // Check if feedback already exists for this session AND user
     const existingFeedback = await prisma.sessionFeedback.findFirst({
       where: {
         sessionId,
-        week: weekNumber
+        week: weekNumber,
+        trainingPlan: {
+          userId: userId
+        }
       }
     });
 
@@ -86,7 +91,7 @@ export async function POST(request: Request) {
           submittedAt: new Date()
         }
       });
-      console.log('Updated existing feedback:', feedback.id);
+      console.log(`Updated existing feedback for user ${userId}:`, feedback.id);
     } else {
       // Create new feedback
       feedback = await prisma.sessionFeedback.create({
@@ -108,14 +113,15 @@ export async function POST(request: Request) {
           trainingPlanId: trainingPlan.id
         }
       });
-      console.log('Created new feedback:', feedback.id);
+      console.log(`Created new feedback for user ${userId}:`, feedback.id);
     }
 
     return NextResponse.json({ 
       success: true, 
       feedbackId: feedback.id,
       action: existingFeedback ? 'updated' : 'created',
-      data: feedback
+      data: feedback,
+      userId: userId
     });
 
   } catch (error: unknown) {
@@ -135,25 +141,41 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const sessionId = searchParams.get('sessionId');
     const weekNumber = searchParams.get('weekNumber');
+    const userId = searchParams.get('userId') || 'default'; // Add userId support
 
     let feedback;
     
     if (sessionId) {
-      // Get feedback for specific session
+      // Get feedback for specific session AND user
       feedback = await prisma.sessionFeedback.findFirst({
-        where: { sessionId },
+        where: { 
+          sessionId,
+          trainingPlan: {
+            userId: userId
+          }
+        },
         include: { trainingPlan: true }
       });
     } else if (weekNumber) {
-      // Get all feedback for a week
+      // Get all feedback for a week AND user
       feedback = await prisma.sessionFeedback.findMany({
-        where: { week: parseInt(weekNumber) },
+        where: { 
+          week: parseInt(weekNumber),
+          trainingPlan: {
+            userId: userId
+          }
+        },
         include: { trainingPlan: true },
         orderBy: { submittedAt: 'desc' }
       });
     } else {
-      // Get all feedback
+      // Get all feedback for user
       feedback = await prisma.sessionFeedback.findMany({
+        where: {
+          trainingPlan: {
+            userId: userId
+          }
+        },
         include: { trainingPlan: true },
         orderBy: [
           { week: 'asc' },
@@ -162,9 +184,12 @@ export async function GET(request: Request) {
       });
     }
 
+    console.log(`📊 Fetched feedback for user ${userId}:`, Array.isArray(feedback) ? feedback.length : feedback ? 1 : 0, 'records');
+
     return NextResponse.json({ 
       success: true,
-      feedback 
+      feedback,
+      userId: userId
     });
 
   } catch (error: unknown) {

@@ -26,7 +26,7 @@ export default function DashboardPage() {
   
   console.log('Current user:', userId) // For testing
   // Use the custom hook for real training data
-  const trainingStats = useTrainingStats();
+  const trainingStats = useTrainingStats(userId);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-cyan-900 p-4 md:p-6">

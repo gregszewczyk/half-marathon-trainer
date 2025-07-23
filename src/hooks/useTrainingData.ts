@@ -1,7 +1,14 @@
 import { useState, useEffect } from 'react'
 
-export function useTrainingStats() {
-  const [completionData, setCompletionData] = useState({
+interface TrainingStats {
+  daysToRace: number;
+  weekCompletion: number;
+  weekDistance: number;
+  predictedTime: string;
+}
+
+export function useTrainingStats(userId: string = 'default'): TrainingStats {
+  const [completionData, setCompletionData] = useState<TrainingStats>({
     daysToRace: 83,
     weekCompletion: 0,
     weekDistance: 22,
@@ -15,12 +22,13 @@ export function useTrainingStats() {
         const today = new Date();
         const daysToRace = Math.ceil((raceDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
         
-        const response = await fetch('/api/feedback?weekNumber=1');
+        // Add userId parameter to the API call
+        const response = await fetch(`/api/feedback?weekNumber=1&userId=${userId}`);
         let weekCompletion = 0;
         
         if (response.ok) {
           const { feedback } = await response.json();
-          console.log('📊 Raw feedback data:', feedback); // DEBUG
+          console.log(`📊 Raw feedback data for ${userId}:`, feedback); // DEBUG
           
           // Calculate completion percentage
           const totalRunningSessions = 4;
@@ -28,13 +36,13 @@ export function useTrainingStats() {
             feedback.filter((f: any) => {
               const isCompleted = f.completed === 'yes';
               const isRunning = f.sessionType === 'running';
-              console.log(`📋 Session ${f.sessionId}: completed=${f.completed}, type=${f.sessionType}, matches=${isCompleted && isRunning}`); // DEBUG
+              console.log(`📋 Session ${f.sessionId} (${userId}): completed=${f.completed}, type=${f.sessionType}, matches=${isCompleted && isRunning}`); // DEBUG
               return isCompleted && isRunning;
             }).length : 0;
           
-          console.log(`✅ Completed running sessions: ${completedSessions}/${totalRunningSessions}`); // DEBUG
+          console.log(`✅ Completed running sessions for ${userId}: ${completedSessions}/${totalRunningSessions}`); // DEBUG
           weekCompletion = Math.round((completedSessions / totalRunningSessions) * 100);
-          console.log(`📈 Week completion: ${weekCompletion}%`); // DEBUG
+          console.log(`📈 Week completion for ${userId}: ${weekCompletion}%`); // DEBUG
         }
 
         setCompletionData({
@@ -45,13 +53,13 @@ export function useTrainingStats() {
         });
         
       } catch (error) {
-        console.error('Error fetching completion data:', error);
-        // Fallback code...
+        console.error(`Error fetching completion data for ${userId}:`, error);
+        // Keep default values on error
       }
     };
 
     fetchCompletionData();
-  }, []);
+  }, [userId]); // Re-fetch when userId changes
 
   return completionData;
 }
