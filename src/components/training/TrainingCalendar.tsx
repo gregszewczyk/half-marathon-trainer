@@ -1364,13 +1364,17 @@ useEffect(() => {
               </CardContent>
             </Card>
           </div>
-
+// Add this right before your calendar grid
+<div className="text-white bg-red-500 p-2">
+  TrainingCalendar Debug: Width {typeof window !== 'undefined' ? window.innerWidth : 'SSR'}, isMobile: {isMobile.toString()}
+</div>
           {/* Calendar Grid */}
 <div style={{
   display: 'grid',
   gridTemplateColumns: isMobile ? '1fr' : 'repeat(7, 1fr)',
   gap: '16px',
-  minHeight: isMobile ? 'auto' : '480px'
+  minHeight: isMobile ? 'auto' : '480px',
+    border: isMobile ? '3px solid green' : '3px solid red' 
 }}>
             {days.map((day) => (
               <div
