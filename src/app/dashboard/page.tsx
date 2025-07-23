@@ -28,7 +28,9 @@ export default function DashboardPage() {
   console.log('Current user:', userId) // For testing
   // Use the custom hook for real training data
   const trainingStats = useTrainingStats(userId);
-
+if (trainingStats.isLoading) {
+  return <div className="text-white text-center p-8">Loading {userId} data...</div>;
+}
   if (!trainingStats || userId === 'default') {
   console.log(`🎯 Rendering dashboard for user: ${userId} with completion: ${trainingStats.weekCompletion}%`);}
 
