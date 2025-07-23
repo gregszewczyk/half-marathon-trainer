@@ -64,10 +64,21 @@ if (trainingStats.isLoading) {
         </div>
 
 {/* Enhanced Quick Stats with better visual design */}
-<div key={userId} className="grid grid-cols-2 md:grid-cols-2 xl:grid-cols-4 gap-3 md:gap-6">
+<div 
+  className="gap-3 md:gap-6"
+  style={{
+    display: 'grid',
+    gridTemplateColumns: screenWidth <= 768 ? 'repeat(2, 1fr)' : screenWidth <= 1279 ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)'
+  }}
+>
   {/* Days to Race */}
 <Card className="dashboard-card bg-gray-800/60 border-gray-600 backdrop-blur-sm hover:bg-gray-800/80 transition-all duration-300">
-  <CardContent className="card-content p-2 md:p-6 text-center">
+<CardContent 
+  className="text-center"
+  style={{
+    padding: screenWidth <= 768 ? '0.5rem' : '1.5rem'
+  }}
+>
       <div className="w-8 h-8 md:w-12 md:h-12 mx-auto mb-2 md:mb-3 bg-cyan-500/20 rounded-full flex items-center justify-center">
         <div className="w-4 h-4 md:w-6 md:h-6 bg-cyan-400 rounded-full"></div>
       </div>
@@ -79,7 +90,12 @@ if (trainingStats.isLoading) {
 
   {/* Week Completion */}
 <Card className="dashboard-card bg-gray-800/60 border-gray-600 backdrop-blur-sm hover:bg-gray-800/80 transition-all duration-300">
-  <CardContent className="card-content p-2 md:p-6 text-center">
+<CardContent 
+  className="text-center"
+  style={{
+    padding: screenWidth <= 768 ? '0.5rem' : '1.5rem'
+  }}
+>
       <div className="w-8 h-8 md:w-12 md:h-12 mx-auto mb-2 md:mb-3 bg-green-500/20 rounded-full flex items-center justify-center">
         <div className="w-4 h-4 md:w-6 md:h-6 bg-green-400 rounded-full"></div>
       </div>
@@ -91,7 +107,12 @@ if (trainingStats.isLoading) {
 
   {/* Weekly Distance */}
 <Card className="dashboard-card bg-gray-800/60 border-gray-600 backdrop-blur-sm hover:bg-gray-800/80 transition-all duration-300">
-  <CardContent className="card-content p-2 md:p-6 text-center">
+<CardContent 
+  className="text-center"
+  style={{
+    padding: screenWidth <= 768 ? '0.5rem' : '1.5rem'
+  }}
+>
       <div className="w-8 h-8 md:w-12 md:h-12 mx-auto mb-2 md:mb-3 bg-blue-500/20 rounded-full flex items-center justify-center">
         <div className="w-4 h-4 md:w-6 md:h-6 bg-blue-400 rounded-full"></div>
       </div>
@@ -103,7 +124,12 @@ if (trainingStats.isLoading) {
 
   {/* AI Predicted Time */}
 <Card className="dashboard-card bg-gray-800/60 border-gray-600 backdrop-blur-sm hover:bg-gray-800/80 transition-all duration-300">
-  <CardContent className="card-content p-2 md:p-6 text-center">
+<CardContent 
+  className="text-center"
+  style={{
+    padding: screenWidth <= 768 ? '0.5rem' : '1.5rem'
+  }}
+>
       <div className="w-8 h-8 md:w-12 md:h-12 mx-auto mb-2 md:mb-3 bg-purple-500/20 rounded-full flex items-center justify-center">
         <div className="w-4 h-4 md:w-6 md:h-6 bg-purple-400 rounded-full flex items-center justify-center">
           <span className="text-xs font-bold text-black">AI</span>
