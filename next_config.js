@@ -4,6 +4,10 @@ const nextConfig = {
     appDir: true,
     serverComponentsExternalPackages: ['@prisma/client', 'garminconnect'],
   },
+    experimental: {
+    ...nextConfig.experimental,
+    instrumentationHook: true,
+  },
     typescript: {
     ignoreBuildErrors: true,
   },
