@@ -12,8 +12,17 @@ import { useSearchParams } from 'next/navigation'
 
 export default function DashboardPage() {
 
-  const searchParams = useSearchParams()
-  const userId = searchParams.get('user') || 'default'
+  const [userId, setUserId] = useState('default')
+
+  useEffect(() => {
+    // Get user parameter from URL on client side only
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search)
+      const userParam = urlParams.get('user') || 'default'
+      setUserId(userParam)
+      console.log('Current user:', userParam)
+    }
+  }, [])
   
   console.log('Current user:', userId) // For testing
   // Use the custom hook for real training data
