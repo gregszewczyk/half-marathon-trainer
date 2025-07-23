@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Clock, MapPin, Activity } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Clock, MapPin, Activity, Brain, RotateCcw, AlertCircle } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
 
 // Enhanced interfaces for auto-adjustment system
 interface Session {
@@ -32,18 +33,60 @@ interface TrainingAdjustment {
   action: 'increase' | 'decrease' | 'maintain';
   severity: 'minor' | 'moderate' | 'significant';
   nextSessionChanges: {
-    paceAdjustment: number;        // seconds per km (+ or -)
-    distanceAdjustment: number;    // km (+ or -)
+    paceAdjustment: number;
+    distanceAdjustment: number;
     intensityAdjustment: 'easier' | 'harder' | 'same';
-    sessionsToModify: number;      // how many upcoming sessions
+    sessionsToModify: number;
   };
   goalTimeUpdate?: {
     newGoalTime: string;
     confidence: number;
-    improvement: number;           // seconds faster/slower
+    improvement: number;
   };
   reasoning: string;
-  modifications: string[];        // List of specific changes made
+  modifications: string[];
+}
+
+interface CrossWeekModification {
+  week: number;
+  day: string;
+  sessionId?: string;
+  modificationType: 'pace_adjustment' | 'session_conversion' | 'intensity_reduction' | 'phase_extension' | 'made_running_skip';
+  originalSession?: {
+    type: string;
+    subType: string;
+    distance?: number;
+    pace?: string;
+  };
+  newSession: {
+    type: string;
+    subType: string;
+    distance?: number;
+    pace?: string;
+    reason: string;
+  };
+  explanation: string;
+}
+
+interface EnhancedAIResult {
+  analysis: string;
+  impact: 'positive' | 'negative' | 'neutral';
+  confidence: number;
+  goalImpact: 'helps_sub2' | 'neutral_sub2' | 'hurts_sub2';
+  recommendations: string[];
+  crossWeekModifications: CrossWeekModification[];
+  alternativeOptions?: Array<{
+    title: string;
+    description: string;
+    pros: string[];
+    cons: string[];
+    modifications: CrossWeekModification[];
+  }>;
+  trainingPhaseAdjustment?: {
+    currentPhase: string;
+    recommendedPhase: string;
+    reason: string;
+  };
 }
 
 const AITrainingCalendar = () => {
@@ -57,8 +100,22 @@ const AITrainingCalendar = () => {
   const [aiAdjustment, setAiAdjustment] = useState<TrainingAdjustment | null>(null);
   const [showAiPanel, setShowAiPanel] = useState(false);
   
-  // NEW STATE: Store modified sessions across all weeks
+  // Store modified sessions across all weeks
   const [modifiedSessions, setModifiedSessions] = useState<{[sessionId: string]: Session}>({});
+  const [completedSessions, setCompletedSessions] = useState<Set<string>>(new Set());
+
+  // Drag and drop state
+  const [draggedSession, setDraggedSession] = useState<Session | null>(null);
+  const [draggedFromDay, setDraggedFromDay] = useState<string | null>(null);
+  const [dragOverDay, setDragOverDay] = useState<string | null>(null);
+  const [aiRebalancing, setAiRebalancing] = useState(false);
+  const [rebalanceResult, setRebalanceResult] = useState<any>(null);
+  const [showRebalanceModal, setShowRebalanceModal] = useState(false);
+
+  // Enhanced AI state
+  const [enhancedAiResult, setEnhancedAiResult] = useState<EnhancedAIResult | null>(null);
+  const [showEnhancedAiModal, setShowEnhancedAiModal] = useState(false);
+  const [selectedAlternative, setSelectedAlternative] = useState<number>(0);
 
   // Time conversion functions
   const timeToSeconds = (timeStr: string): number => {
@@ -71,14 +128,6 @@ const AITrainingCalendar = () => {
     return h * 3600 + m * 60 + s;
   };
 
-  const secondsToTime = (seconds: number): string => {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = seconds % 60;
-    return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-  };
-
-  // Convert pace string to seconds per km
   const paceToSeconds = (pace: string): number => {
     const parts = pace.split(':');
     if (parts.length !== 2) return 0;
@@ -87,14 +136,12 @@ const AITrainingCalendar = () => {
     return minutes * 60 + seconds;
   };
 
-  // Convert seconds per km back to pace string
   const secondsToPace = (seconds: number): string => {
     const minutes = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${minutes}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Calculate all pace zones from goal time
   const calculatePaceZones = (goalTime: string) => {
     const totalSeconds = timeToSeconds(goalTime);
     const targetPaceSeconds = Math.floor(totalSeconds / 21.1);
@@ -111,14 +158,12 @@ const AITrainingCalendar = () => {
     };
   };
 
-  // Calculate session duration in minutes
   const calculateDuration = (distance: number, pace: string): number => {
     const paceSeconds = paceToSeconds(pace);
-    const totalSeconds = (distance * paceSeconds) + 300 + 600; // warmup + cooldown
+    const totalSeconds = (distance * paceSeconds) + 300 + 600;
     return Math.round(totalSeconds / 60);
   };
 
-  // Progressive training plan with AI modification capability
   const getWeekData = (weekNum: number): WeekData => {
     const paceZones = calculatePaceZones(goalTime);
     
@@ -249,7 +294,6 @@ const AITrainingCalendar = () => {
       }]
     };
 
-    // Apply any AI modifications to sessions
     const modifiedSchedule: { [key: string]: Session[] } = {};
     Object.keys(baseSchedule).forEach(day => {
       const daySessions = baseSchedule[day];
@@ -273,7 +317,259 @@ const AITrainingCalendar = () => {
     setWeekData(getWeekData(currentWeek));
   }, [currentWeek, goalTime, modifiedSessions]);
 
-  // Enhanced AI call for auto-adjustments
+  useEffect(() => {
+    const loadCompletedSessions = async () => {
+      try {
+        const response = await fetch(`/api/feedback?weekNumber=${currentWeek}`);
+        if (response.ok) {
+          const { feedback } = await response.json();
+          const completed = new Set<string>();
+          
+          if (Array.isArray(feedback)) {
+            feedback.forEach((f: any) => {
+              if (f.completed === 'yes') {
+                completed.add(f.sessionId);
+              }
+            });
+          }
+          
+          setCompletedSessions(completed);
+          console.log(`📋 Loaded ${completed.size} completed sessions for week ${currentWeek}`);
+        }
+      } catch (error) {
+        console.error('Error loading completed sessions:', error);
+      }
+    };
+    
+    loadCompletedSessions();
+  }, [currentWeek]);
+
+  // Enhanced AI functions
+  const getRecentFeedback = async () => {
+    try {
+      const response = await fetch(`/api/feedback?weekNumber=${currentWeek}&recent=5`);
+      if (response.ok) {
+        const { feedback } = await response.json();
+        return Array.isArray(feedback) ? feedback : [];
+      }
+    } catch (error) {
+      console.error('Error fetching recent feedback:', error);
+    }
+    return [];
+  };
+
+  const assessFitnessTrajectory = (recentFeedback: any[]) => {
+    if (!recentFeedback || recentFeedback.length === 0) return 'unknown';
+    
+    const avgRPE = recentFeedback.reduce((sum, f) => sum + (f.rpe || 5), 0) / recentFeedback.length;
+    const completionRate = recentFeedback.filter(f => f.completed === 'yes').length / recentFeedback.length;
+    
+    if (avgRPE <= 4 && completionRate >= 0.8) return 'ahead';
+    if (avgRPE >= 7 || completionRate < 0.5) return 'behind';
+    if (avgRPE >= 8 || completionRate < 0.3) return 'way_behind';
+    return 'on_track';
+  };
+
+  const applyCrossWeekModifications = async (modifications: CrossWeekModification[], alternativeIndex?: number) => {
+    try {
+      console.log(`🤖 Applying ${modifications.length} cross-week modifications`);
+      
+      for (const mod of modifications) {
+        console.log(`📅 Week ${mod.week} ${mod.day}: ${mod.originalSession?.subType} → ${mod.newSession.subType}`);
+        console.log(`   Reason: ${mod.newSession.reason}`);
+      }
+      
+      // Save AI modifications to database for tracking
+      await fetch('/api/ai/cross-week-modifications', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          currentWeek,
+          modifications,
+          selectedAlternative: alternativeIndex,
+          appliedAt: new Date().toISOString()
+        }),
+      });
+
+      setShowEnhancedAiModal(false);
+      setEnhancedAiResult(null);
+      
+      // Show success notification
+      showNotification('🤖 AI has optimized your future training for sub-2:00 goal!', 'success');
+      
+    } catch (error) {
+      console.error('Error applying cross-week modifications:', error);
+      showNotification('Failed to apply AI modifications', 'error');
+    }
+  };
+
+  const showNotification = (message: string, type: 'success' | 'error') => {
+    const notification = document.createElement('div');
+    notification.className = `fixed top-4 right-4 z-50 ${
+      type === 'success' ? 'bg-green-900 border-green-400' : 'bg-red-900 border-red-400'
+    } border rounded-lg p-4 shadow-lg`;
+    notification.innerHTML = `
+      <div class="flex items-center gap-2 ${type === 'success' ? 'text-green-300' : 'text-red-300'}">
+        <div class="w-5 h-5 ${type === 'success' ? 'bg-green-400' : 'bg-red-400'} rounded-full flex items-center justify-center text-xs font-bold text-black">
+          ${type === 'success' ? '✓' : '✗'}
+        </div>
+        <span class="font-bold">${message}</span>
+      </div>
+    `;
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+      if (document.body.contains(notification)) {
+        document.body.removeChild(notification);
+      }
+    }, 4000);
+  };
+
+  const analyzeScheduleRebalancingEnhanced = async (session: Session | null, fromDay: string, toDay: string) => {
+    if (!session) return;
+    
+    setAiRebalancing(true);
+    
+    try {
+      // Get recent feedback for context
+      const recentFeedback = await getRecentFeedback();
+      const fitnessTrajectory = assessFitnessTrajectory(recentFeedback);
+      
+      const response = await fetch('/api/ai/enhanced-rebalance', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          sessionId: session.id,
+          sessionType: session.type,
+          sessionSubType: session.subType || 'unknown',
+          fromDay,
+          toDay,
+          distance: session.distance || 0,
+          currentWeek,
+          goalTime,
+          weeklySchedule: weekData.weeklySchedule,
+          recentFeedback,
+          fitnessTrajectory
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to get enhanced AI analysis');
+      }
+
+      const data = await response.json();
+      setEnhancedAiResult(data.enhancedAnalysis);
+      setShowEnhancedAiModal(true);
+      
+      console.log('🧠 Enhanced AI Analysis:', data.enhancedAnalysis);
+    } catch (error) {
+      console.error('Enhanced AI Analysis Error:', error);
+      
+      // Fallback to basic analysis
+      setEnhancedAiResult({
+        analysis: 'Schedule change completed. Monitoring recommended for optimal sub-2:00 preparation.',
+        impact: 'neutral',
+        confidence: 0.7,
+        goalImpact: 'neutral_sub2',
+        recommendations: [
+          'Monitor your training response over the next few sessions',
+          'Focus on consistent pacing to maintain sub-2:00 trajectory',
+          'Prioritize recovery between intense training days'
+        ],
+        crossWeekModifications: [],
+      });
+      setShowEnhancedAiModal(true);
+    } finally {
+      setAiRebalancing(false);
+    }
+  };
+
+  // DRAG AND DROP HANDLERS
+  const handleDragStart = (e: React.DragEvent, session: Session, dayKey: string) => {
+    if (session.type === 'rest') return;
+    
+    setDraggedSession(session);
+    setDraggedFromDay(dayKey);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', '');
+    
+    const target = e.target as HTMLElement;
+    target.style.opacity = '0.5';
+    target.style.transform = 'scale(0.95)';
+  };
+
+  const handleDragEnd = (e: React.DragEvent) => {
+    const target = e.target as HTMLElement;
+    target.style.opacity = '1';
+    target.style.transform = 'scale(1)';
+    setDragOverDay(null);
+  };
+
+  const handleDragOver = (e: React.DragEvent, dayKey: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverDay(dayKey);
+  };
+
+  const handleDragLeave = (e: React.DragEvent, dayKey: string) => {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const x = e.clientX;
+    const y = e.clientY;
+    
+    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+      setDragOverDay(null);
+    }
+  };
+
+  const handleDrop = useCallback(async (e: React.DragEvent, toDay: string) => {
+    e.preventDefault();
+    setDragOverDay(null);
+    
+    if (!draggedSession || !draggedFromDay || toDay === draggedFromDay) {
+      setDraggedSession(null);
+      setDraggedFromDay(null);
+      return;
+    }
+
+    // Update the schedule immediately
+    const newSchedule = { ...weekData.weeklySchedule };
+    const fromArray = [...(newSchedule[draggedFromDay] ?? [])];
+    const sessionIndex = fromArray.findIndex(s => s.id === draggedSession.id);
+    
+    if (sessionIndex > -1) {
+      const removedSessions = fromArray.splice(sessionIndex, 1);
+      const movedSession = removedSessions[0];
+      
+      if (movedSession) {
+        newSchedule[draggedFromDay] = fromArray;
+        
+        if (!newSchedule[toDay]) {
+          newSchedule[toDay] = [];
+        }
+        newSchedule[toDay].push(movedSession);
+        
+        // Update weekData with new schedule
+        setWeekData(prev => ({
+          ...prev,
+          weeklySchedule: newSchedule
+        }));
+        
+        // Trigger enhanced AI analysis for running sessions
+        if (draggedSession.type === 'running') {
+          await analyzeScheduleRebalancingEnhanced(draggedSession, draggedFromDay, toDay);
+        }
+      }
+    }
+
+    setDraggedSession(null);
+    setDraggedFromDay(null);
+  }, [draggedSession, draggedFromDay, weekData.weeklySchedule, currentWeek, goalTime]);
+
+  // AI ADJUSTMENT FUNCTIONS
   const getAIAdjustment = async (sessionData: any): Promise<TrainingAdjustment> => {
     const response = await fetch('/api/ai/auto-adjust', {
       method: 'POST',
@@ -291,7 +587,6 @@ const AITrainingCalendar = () => {
     return result.adjustment;
   };
 
-  // FIXED: Apply AI adjustments to future sessions and update state
   const applyAIAdjustments = (adjustment: TrainingAdjustment) => {
     if (adjustment.action === 'maintain') return;
 
@@ -302,8 +597,7 @@ const AITrainingCalendar = () => {
     const newModifiedSessions = { ...modifiedSessions };
     let modifiedCount = 0;
 
-    // Find and modify upcoming running sessions across multiple weeks
-    for (let week = currentWeek; week <= Math.min(12, currentWeek + 2) && modifiedCount < sessionsToModify; week++) {
+    for (let week = currentWeek; week <= Math.min(12, currentWeek + 3) && modifiedCount < sessionsToModify; week++) {
       const weekData = getWeekData(week);
       
       Object.keys(weekData.weeklySchedule).forEach(day => {
@@ -314,9 +608,19 @@ const AITrainingCalendar = () => {
         
         daySessions.forEach(session => {
           if (session.type === 'running' && modifiedCount < sessionsToModify) {
-            // Apply modifications
+            if (selectedSession && session.id === selectedSession.id) {
+              console.log(`🚫 Skipping current session: ${session.id}`);
+              return;
+            }
+
+            if (week === currentWeek) {
+              console.log(`⏭️ Future session in current week: ${session.id}`);
+            }
+            
+            console.log(`🤖 Modifying future session: ${session.id}`);
+            
             const currentPaceSeconds = paceToSeconds(session.pace || '6:00');
-            const newPaceSeconds = Math.max(240, currentPaceSeconds + paceAdjustment); // min 4:00/km
+            const newPaceSeconds = Math.max(240, currentPaceSeconds + paceAdjustment);
             const newDistance = Math.max(1, (session.distance || 5) + distanceAdjustment);
             
             const modifiedSession: Session = {
@@ -326,7 +630,7 @@ const AITrainingCalendar = () => {
               aiModified: true,
               originalPace: session.originalPace || session.pace || '6:00',
               originalDistance: session.originalDistance || session.distance || 5,
-              mainSet: `${newDistance}km at ${adjustment.nextSessionChanges.intensityAdjustment} pace (AI adjusted: ${adjustment.reasoning})`
+              mainSet: `${newDistance}km at ${adjustment.nextSessionChanges.intensityAdjustment} pace (AI: ${adjustment.reasoning})`
             };
             
             newModifiedSessions[session.id] = modifiedSession;
@@ -336,62 +640,176 @@ const AITrainingCalendar = () => {
       });
     }
 
-    // Update state with modified sessions
     setModifiedSessions(newModifiedSessions);
 
-    // Update goal time if AI suggests it
     if (adjustment.goalTimeUpdate && adjustment.goalTimeUpdate.confidence > 0.8) {
-      setGoalTime(adjustment.goalTimeUpdate.newGoalTime);
       setPredictedTime(adjustment.goalTimeUpdate.newGoalTime);
+      console.log(`🤖 AI updated predicted time to: ${adjustment.goalTimeUpdate.newGoalTime}`);
     }
 
-    console.log(`🤖 AI modified ${modifiedCount} upcoming sessions`);
+    console.log(`🤖 AI modified ${modifiedCount} FUTURE sessions (excluding current session: ${selectedSession?.id})`);
   };
 
-  // Enhanced feedback submission with auto-adjustment
-  const handleFeedbackSubmit = async (e: React.FormEvent) => {
+  // FEEDBACK SUBMISSION
+  const handleFeedbackSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.target as HTMLFormElement);
     
     const feedback = {
-      completed: formData.get('completed'),
-      actualPace: formData.get('actualPace'),
+      completed: formData.get('completed') as string,
+      actualPace: formData.get('actualPace') as string | null,
       difficulty: difficultyValue,
       rpe: rpeValue,
-      feeling: formData.get('feeling'),
-      comments: formData.get('comments')
+      feeling: formData.get('feeling') as string,
+      comments: formData.get('comments') as string | null
     };
 
-    // AI triggers for both hard AND easy sessions
-    if (feedback.difficulty >= 8 || feedback.rpe >= 8 || 
-        (feedback.difficulty <= 3 && feedback.rpe <= 3 && feedback.completed === 'yes')) {
-      
-      try {
-        const sessionData = {
-          type: selectedSession?.subType || 'unknown',
-          plannedDistance: selectedSession?.distance || 0,
-          actualDistance: selectedSession?.distance || 0,
-          plannedPace: selectedSession?.pace || '0:00',
-          actualPace: feedback.actualPace || selectedSession?.pace || '0:00',
-          rpe: feedback.rpe,
-          difficulty: feedback.difficulty,
-          feeling: feedback.feeling,
-          comments: feedback.comments,
-          completed: feedback.completed
-        };
-
-        const adjustment = await getAIAdjustment(sessionData);
-        
-        // Apply the adjustments automatically
-        applyAIAdjustments(adjustment);
-        
-        // Show AI panel with what was changed
-        setAiAdjustment(adjustment);
-        setShowAiPanel(true);
-        
-      } catch (error) {
-        console.error('AI auto-adjustment failed:', error);
+    try {
+      if (!selectedSession) {
+        throw new Error('No session selected');
       }
+
+      if (completedSessions.has(selectedSession.id)) {
+        const confirmOverwrite = window.confirm(
+          'You have already submitted feedback for this session. Do you want to update it?'
+        );
+        if (!confirmOverwrite) {
+          setShowFeedback(false);
+          return;
+        }
+      }
+
+      console.log('💾 Saving feedback for session:', selectedSession.id);
+      
+      const dayMap: { [key: string]: string } = {
+        'mon': 'monday',
+        'tue': 'tuesday', 
+        'wed': 'wednesday',
+        'thu': 'thursday',
+        'fri': 'friday',
+        'sat': 'saturday',
+        'sun': 'sunday'
+      };
+      
+      const sessionIdParts = selectedSession.id.split('-');
+      const dayPrefix = sessionIdParts.length > 0 ? sessionIdParts[0] : '';
+      const day = dayPrefix && dayMap[dayPrefix] ? dayMap[dayPrefix] : 'unknown';
+      
+      const feedbackData = {
+        sessionId: selectedSession.id,
+        weekNumber: currentWeek,
+        day: day,
+        sessionType: selectedSession.type,
+        sessionSubType: selectedSession.subType,
+        plannedDistance: selectedSession.distance,
+        plannedPace: selectedSession.pace,
+        plannedTime: selectedSession.time,
+        completed: feedback.completed,
+        actualPace: feedback.actualPace,
+        difficulty: feedback.difficulty,
+        rpe: feedback.rpe,
+        feeling: feedback.feeling,
+        comments: feedback.comments
+      };
+      
+      const feedbackResponse = await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(feedbackData)
+      });
+
+      if (!feedbackResponse.ok) {
+        const errorData = await feedbackResponse.json();
+        throw new Error(`Failed to save feedback: ${errorData.error || 'Unknown error'}`);
+      }
+
+      const result = await feedbackResponse.json();
+      console.log('✅ Feedback saved to database:', result);
+
+      // Show success message
+      const successPanel = document.createElement('div');
+      successPanel.className = 'fixed top-4 right-4 z-50 bg-green-900 border border-green-400 rounded-lg p-4 shadow-lg';
+      successPanel.innerHTML = `
+        <div class="flex items-center gap-2 text-green-300">
+          <div class="w-5 h-5 bg-green-400 rounded-full flex items-center justify-center text-xs font-bold text-black">✓</div>
+          <span class="font-bold">Feedback Saved!</span>
+        </div>
+        <p class="text-sm text-green-200 mt-1">Training data saved to database successfully.</p>
+      `;
+      document.body.appendChild(successPanel);
+      
+      if (feedback.completed === 'yes') {
+        setCompletedSessions(prev => new Set([...prev, selectedSession.id]));
+        console.log('✅ Session marked as completed:', selectedSession.id);
+      } else if (feedback.completed === 'no') {
+        setCompletedSessions(prev => {
+          const updated = new Set([...prev]);
+          updated.delete(selectedSession.id);
+          return updated;
+        });
+        console.log('❌ Session marked as not completed:', selectedSession.id);
+      }
+
+      setTimeout(() => {
+        if (document.body.contains(successPanel)) {
+          document.body.removeChild(successPanel);
+        }
+      }, 3000);
+
+      // AI auto-adjustment
+      if (feedback.difficulty >= 8 || feedback.rpe >= 8 || 
+          (feedback.difficulty <= 3 && feedback.rpe <= 3 && feedback.completed === 'yes')) {
+        
+        try {
+          console.log('🤖 Triggering AI auto-adjustment...');
+          
+          const sessionData = {
+            type: selectedSession.subType || 'unknown',
+            plannedDistance: selectedSession.distance || 0,
+            actualDistance: selectedSession.distance || 0,
+            plannedPace: selectedSession.pace || '0:00',
+            actualPace: feedback.actualPace || selectedSession.pace || '0:00',
+            rpe: feedback.rpe,
+            difficulty: feedback.difficulty,
+            feeling: feedback.feeling,
+            comments: feedback.comments,
+            completed: feedback.completed
+          };
+
+          const adjustment = await getAIAdjustment(sessionData);
+          
+          applyAIAdjustments(adjustment);
+          setAiAdjustment(adjustment);
+          setShowAiPanel(true);
+          
+          console.log('✅ AI auto-adjustment applied');
+          
+        } catch (aiError: unknown) {
+          const aiErrorMessage = aiError instanceof Error ? aiError.message : 'Unknown AI error';
+          console.error('AI auto-adjustment failed:', aiErrorMessage);
+        }
+      }
+
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      console.error('❌ Failed to save feedback:', errorMessage);
+      
+      const errorPanel = document.createElement('div');
+      errorPanel.className = 'fixed top-4 right-4 z-50 bg-red-900 border border-red-400 rounded-lg p-4 shadow-lg';
+      errorPanel.innerHTML = `
+        <div class="flex items-center gap-2 text-red-300">
+          <div class="w-5 h-5 bg-red-400 rounded-full flex items-center justify-center text-xs font-bold text-black">✗</div>
+          <span class="font-bold">Save Failed</span>
+        </div>
+        <p class="text-sm text-red-200 mt-1">${errorMessage}</p>
+      `;
+      document.body.appendChild(errorPanel);
+      
+      setTimeout(() => {
+        if (document.body.contains(errorPanel)) {
+          document.body.removeChild(errorPanel);
+        }
+      }, 5000);
     }
 
     setShowFeedback(false);
@@ -400,47 +818,336 @@ const AITrainingCalendar = () => {
     setRpeValue(5);
   };
 
+  // UTILITY FUNCTIONS
   const getSessionColor = (session: Session): string => {
     let baseColor = '';
     
-    if (session.type === 'rest') baseColor = 'bg-gray-700 text-gray-300';
-    else if (session.type === 'gym') {
+    if (session.type === 'rest') {
+      baseColor = 'bg-gray-600/70 text-gray-200 border border-gray-500/30';
+    } else if (session.type === 'gym') {
       const gymColors = {
-        push: 'bg-blue-600 text-white',
-        pull: 'bg-cyan-600 text-white', 
-        legs: 'bg-orange-600 text-white'
+        push: 'bg-blue-600/70 text-blue-100 border border-blue-400/30',
+        pull: 'bg-cyan-600/70 text-cyan-100 border border-cyan-400/30', 
+        legs: 'bg-purple-600/70 text-purple-100 border border-purple-400/30'
       };
-      baseColor = gymColors[session.subType as keyof typeof gymColors] || 'bg-blue-600 text-white';
-    }
-    else if (session.type === 'running') {
+      baseColor = gymColors[session.subType as keyof typeof gymColors] || 'bg-blue-600/70 text-blue-100 border border-blue-400/30';
+    } else if (session.type === 'running') {
       const runColors = {
-        easy: 'bg-green-600 text-white',
-        tempo: 'bg-orange-600 text-white',
-        intervals: 'bg-purple-600 text-white',
-        long: 'bg-red-600 text-white'
+        easy: 'bg-green-600/70 text-green-100 border border-green-400/30',
+        tempo: 'bg-orange-600/70 text-orange-100 border border-orange-400/30',
+        intervals: 'bg-red-600/70 text-red-100 border border-red-400/30',
+        long: 'bg-indigo-600/70 text-indigo-100 border border-indigo-400/30'
       };
-      baseColor = runColors[session.subType as keyof typeof runColors] || 'bg-green-600 text-white';
+      baseColor = runColors[session.subType as keyof typeof runColors] || 'bg-green-600/70 text-green-100 border border-green-400/30';
     }
 
-    // Add AI modification indicator
-    return session.aiModified ? `${baseColor} ring-2 ring-cyan-400 ring-opacity-60` : baseColor;
+    if (completedSessions.has(session.id)) {
+      baseColor = baseColor.replace('border-', 'border-2 border-green-400 bg-opacity-50 ');
+    }
+
+    if (session.aiModified) {
+      baseColor += ' ring-2 ring-cyan-400/60';
+    }
+
+    return baseColor;
   };
 
-  const getSessionText = (session: Session): string => {
-    if (session.type === 'rest') return 'REST DAY';
-    if (session.type === 'gym') return `${session.subType.toUpperCase()} DAY`;
-    if (session.type === 'running') {
-      const madeRunningText = session.madeRunning ? ' with MadeRunning' : '';
-      const text = `${session.subType.charAt(0).toUpperCase() + session.subType.slice(1)} ${session.distance}K${madeRunningText}`;
-      return session.aiModified ? `🤖 ${text}` : text;
+  const getSessionText = (session: Session): JSX.Element => {
+    let mainText = '';
+    let details: string[] = [];
+    
+    if (session.type === 'rest') {
+      mainText = 'REST DAY';
+      details = ['Recovery & stretching'];
+    } else if (session.type === 'gym') {
+      mainText = `${session.subType.toUpperCase()} DAY`;
+      details = [];
+    } else if (session.type === 'running') {
+      const madeRunningText = session.madeRunning ? ' (MadeRunning)' : '';
+      mainText = `${session.subType.charAt(0).toUpperCase() + session.subType.slice(1)} ${session.distance}K${madeRunningText}`;
+      
+      const workoutTime = calculateDuration(session.distance || 5, session.pace || '6:30');
+      
+      switch (session.subType) {
+        case 'easy':
+          details = [
+            'WU: 10min easy jog',
+            `Main: ${workoutTime - 15}min@${session.pace}/km`,
+            'CD: 5min walk',
+            `Total: ${workoutTime}min`
+          ];
+          break;
+        case 'tempo':
+          const tempoTime = Math.round(workoutTime * 0.6);
+          details = [
+            'WU: 15min easy + strides',
+            `Tempo: ${tempoTime}min@${session.pace}/km`,
+            'CD: 10min easy',
+            `Total: ${workoutTime}min`
+          ];
+          break;
+        case 'long':
+          details = [
+            'WU: 15min easy',
+            `Long: ${workoutTime - 25}min progressive`,
+            'CD: 10min walk',
+            `Total: ${workoutTime}min`
+          ];
+          break;
+        case 'intervals':
+          details = [
+            'WU: 15min easy',
+            `Intervals@${session.pace}/km`,
+            'CD: 10min easy',
+            `Total: ${workoutTime}min`
+          ];
+          break;
+        default:
+          details = [`${session.pace}/km`, `Total: ${workoutTime}min`];
+      }
     }
-    return '';
+
+    if (completedSessions.has(session.id)) {
+      mainText = `✅ ${mainText}`;
+    }
+    if (session.aiModified) {
+      mainText = `🤖 ${mainText}`;
+    }
+
+    return (
+      <div className="space-y-1">
+        <div className="font-medium text-sm">{mainText}</div>
+        {details.map((detail, index) => (
+          <div key={index} className="text-xs opacity-75">
+            {detail}
+          </div>
+        ))}
+      </div>
+    );
   };
 
   const getTotalWeekDistance = (): number => {
     return Object.values(weekData.weeklySchedule).flat()
       .filter(session => session.type === 'running' && session.distance)
       .reduce((total, session) => total + (session.distance || 0), 0);
+  };
+
+  const getWeekCompletionPercentage = (): number => {
+    const allSessions = Object.values(weekData.weeklySchedule).flat()
+      .filter(session => session.type === 'running');
+    
+    if (allSessions.length === 0) return 0;
+    
+    const completedCount = allSessions.filter(session => 
+      completedSessions.has(session.id)
+    ).length;
+    
+    return Math.round((completedCount / allSessions.length) * 100);
+  };
+
+  // Enhanced AI Modal Component
+  const EnhancedAIModal = () => {
+    if (!showEnhancedAiModal || !enhancedAiResult) return null;
+
+    // Create a local variable to satisfy TypeScript
+    const result = enhancedAiResult;
+
+    return (
+      <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50" onClick={() => setShowEnhancedAiModal(false)}>
+        <div className="bg-gray-800 rounded-lg border border-gray-600 max-w-4xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="p-6">
+            {/* Header */}
+            <div className="flex items-center gap-3 mb-6">
+              <Brain className="text-cyan-400" size={32} />
+              <div className="flex-1">
+                <h2 className="text-xl font-bold text-white">Enhanced AI Training Analysis</h2>
+                <div className="flex items-center gap-4 text-sm">
+                  <span className="text-gray-400">Confidence: {Math.round(result.confidence * 100)}%</span>
+                  <span className={`font-medium ${
+                    result.goalImpact === 'helps_sub2' ? 'text-green-400' :
+                    result.goalImpact === 'hurts_sub2' ? 'text-red-400' : 'text-yellow-400'
+                  }`}>
+                    Sub-2:00 Impact: {result.goalImpact === 'helps_sub2' ? 'Positive' :
+                                     result.goalImpact === 'hurts_sub2' ? 'Negative' : 'Neutral'}
+                  </span>
+                </div>
+              </div>
+              <button onClick={() => setShowEnhancedAiModal(false)} className="text-gray-400 hover:text-white text-xl">&times;</button>
+            </div>
+
+            {/* Analysis Summary */}
+            <div className="mb-6">
+              <div className="flex items-center gap-3 mb-3">
+                <div className={`w-3 h-3 rounded-full ${
+                  result.impact === 'positive' ? 'bg-green-500' :
+                  result.impact === 'negative' ? 'bg-red-500' : 'bg-yellow-500'
+                }`} />
+                <span className={`font-medium ${
+                  result.impact === 'positive' ? 'text-green-400' :
+                  result.impact === 'negative' ? 'text-red-400' : 'text-yellow-400'
+                }`}>
+                  {result.impact.charAt(0).toUpperCase() + result.impact.slice(1)} Schedule Impact
+                </span>
+              </div>
+              <p className="text-gray-300 leading-relaxed">{result.analysis}</p>
+            </div>
+
+            {/* Training Phase Adjustment */}
+            {result.trainingPhaseAdjustment && result.trainingPhaseAdjustment.recommendedPhase !== result.trainingPhaseAdjustment.currentPhase && (
+              <div className="mb-6 p-4 bg-blue-900/20 border border-blue-500/30 rounded-lg">
+                <h3 className="font-semibold mb-2 text-blue-400">🎯 Training Phase Recommendation</h3>
+                <div className="text-sm text-gray-300">
+                  <p><strong>Current:</strong> {result.trainingPhaseAdjustment.currentPhase}</p>
+                  <p><strong>Recommended:</strong> {result.trainingPhaseAdjustment.recommendedPhase}</p>
+                  <p className="mt-2 text-blue-200">{result.trainingPhaseAdjustment.reason}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Cross-Week Modifications */}
+            {result.crossWeekModifications && result.crossWeekModifications.length > 0 && (
+              <div className="mb-6">
+                <h3 className="font-semibold mb-3 text-white flex items-center gap-2">
+                  <RotateCcw size={16} />
+                  Recommended Changes for Week {currentWeek + 1} and beyond
+                </h3>
+                <div className="space-y-3">
+                  {result.crossWeekModifications.map((mod, idx) => (
+                    <div key={idx} className="p-4 bg-gray-700/50 rounded-lg border border-gray-600">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="font-medium text-white">
+                          Week {mod.week}, {mod.day.charAt(0).toUpperCase() + mod.day.slice(1)}
+                        </div>
+                        <span className={`px-2 py-1 rounded text-xs font-bold ${
+                          mod.modificationType === 'session_conversion' ? 'bg-orange-900 text-orange-200' :
+                          mod.modificationType === 'pace_adjustment' ? 'bg-blue-900 text-blue-200' :
+                          mod.modificationType === 'made_running_skip' ? 'bg-purple-900 text-purple-200' :
+                          'bg-gray-900 text-gray-200'
+                        }`}>
+                          {mod.modificationType.replace(/_/g, ' ')}
+                        </span>
+                      </div>
+                      
+                      {mod.originalSession && (
+                        <div className="text-sm text-gray-300 mb-2">
+                          <span className="line-through text-red-400">
+                            {mod.originalSession.subType} {mod.originalSession.distance}km @ {mod.originalSession.pace}
+                          </span>
+                          <span className="mx-2">→</span>
+                          <span className="text-green-400">
+                            {mod.newSession.subType} {mod.newSession.distance}km @ {mod.newSession.pace}
+                          </span>
+                        </div>
+                      )}
+                      
+                      <div className="text-xs text-gray-400">
+                        <div className="mb-1"><strong>Reason:</strong> {mod.newSession.reason}</div>
+                        <div>{mod.explanation}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Alternative Options */}
+            {result.alternativeOptions && result.alternativeOptions.length > 0 && (
+              <div className="mb-6">
+                <h3 className="font-semibold mb-3 text-white">🎯 Training Approach Options</h3>
+                <div className="space-y-3">
+                  {result.alternativeOptions.map((option, idx) => (
+                    <div 
+                      key={idx} 
+                      className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                        selectedAlternative === idx 
+                          ? 'border-cyan-400 bg-cyan-900/20' 
+                          : 'border-gray-600 bg-gray-700/30 hover:border-gray-500'
+                      }`}
+                      onClick={() => setSelectedAlternative(idx)}
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <h4 className="font-medium text-white">{option.title}</h4>
+                        <div className={`w-4 h-4 rounded-full border-2 ${
+                          selectedAlternative === idx 
+                            ? 'border-cyan-400 bg-cyan-400' 
+                            : 'border-gray-400'
+                        }`} />
+                      </div>
+                      
+                      <p className="text-sm text-gray-300 mb-3">{option.description}</p>
+                      
+                      <div className="grid grid-cols-2 gap-4 text-xs">
+                        <div>
+                          <div className="font-semibold text-green-400 mb-1">Pros:</div>
+                          <ul className="text-gray-300 space-y-1">
+                            {option.pros.map((pro, i) => (
+                              <li key={i}>• {pro}</li>
+                            ))}
+                          </ul>
+                        </div>
+                        <div>
+                          <div className="font-semibold text-red-400 mb-1">Cons:</div>
+                          <ul className="text-gray-300 space-y-1">
+                            {option.cons.map((con, i) => (
+                              <li key={i}>• {con}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Recommendations */}
+            <div className="mb-6">
+              <h3 className="font-semibold mb-3 flex items-center gap-2 text-white">
+                <AlertCircle size={16} />
+                AI Coach Recommendations
+              </h3>
+              <ul className="space-y-2">
+                {result.recommendations.map((rec, idx) => (
+                  <li key={idx} className="text-gray-300 text-sm flex items-start gap-2">
+                    <span className="text-cyan-400 mt-1">•</span>
+                    {rec}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  const selectedOption = result.alternativeOptions?.[selectedAlternative];
+                  const modifications = selectedOption?.modifications || result.crossWeekModifications || [];
+                  applyCrossWeekModifications(modifications, selectedAlternative);
+                }}
+                className="flex-1 bg-cyan-600 hover:bg-cyan-700 px-6 py-3 rounded-lg font-medium transition-colors text-white flex items-center justify-center gap-2"
+                disabled={!result.crossWeekModifications || result.crossWeekModifications.length === 0}
+              >
+                <Brain size={16} />
+                Apply AI Training Changes
+              </button>
+              <button
+                onClick={() => setShowEnhancedAiModal(false)}
+                className="px-6 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors text-white"
+              >
+                Keep Current Plan
+              </button>
+            </div>
+            
+            {/* Sub-2:00 Focus Note */}
+            <div className="mt-4 p-3 bg-green-900/20 border border-green-500/30 rounded-lg text-center">
+              <p className="text-sm text-green-200">
+                🎯 <strong>Goal Focus:</strong> All recommendations prioritize your sub-2:00 half marathon goal on October 12, 2025
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   const paceZones = calculatePaceZones(goalTime);
@@ -458,6 +1165,14 @@ const AITrainingCalendar = () => {
       minHeight: '100vh'
     } as React.CSSProperties}>
       
+      {/* AI Rebalancing Indicator */}
+      {aiRebalancing && (
+        <div className="fixed top-4 right-4 z-50 bg-cyan-900 border border-cyan-400 rounded-lg p-4 shadow-lg flex items-center gap-3">
+          <div className="w-5 h-5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+          <span className="text-cyan-400 font-medium">AI analyzing schedule optimization...</span>
+        </div>
+      )}
+
       {/* AI Adjustment Panel */}
       {showAiPanel && aiAdjustment && (
         <div className="fixed top-4 right-4 z-50 bg-gray-900 border border-cyan-400 rounded-lg p-4 max-w-sm shadow-lg">
@@ -470,7 +1185,7 @@ const AITrainingCalendar = () => {
               onClick={() => setShowAiPanel(false)}
               className="ml-auto text-gray-400 hover:text-white"
             >
-              ×
+              &times;
             </button>
           </div>
           
@@ -510,55 +1225,52 @@ const AITrainingCalendar = () => {
       )}
       
       {/* Training Pace Zones */}
-      <div className="p-6 border-b" style={{ backgroundColor: 'var(--surface-color)', borderColor: '#3a3a4a' }}>
-        <div className="max-w-6xl mx-auto">
-          <div className="flex items-center justify-between mb-4">
-            <div className="grid grid-cols-5 gap-4">
+      <div className="px-6 pt-8 pb-6">
+        <Card className="bg-gray-800/60 border-gray-600 backdrop-blur-sm">
+          <CardContent className="p-6">
+            <div className="grid grid-cols-5 gap-8">
               <div className="text-center">
-                <label className="block text-xs text-gray-400 mb-2">GOAL TIME</label>
+                <label className="block text-xs text-gray-400 mb-3 font-medium">GOAL TIME</label>
                 <input
                   type="text"
                   value={goalTime}
                   onChange={(e) => setGoalTime(e.target.value)}
-                  className="bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm font-mono text-center w-20"
+                  className="bg-gray-700/50 border border-gray-500 rounded-lg px-3 py-2 text-sm font-mono text-center w-full text-white focus:border-gray-400 focus:outline-none transition-colors"
                 />
               </div>
               <div className="text-center">
-                <label className="block text-xs text-gray-400 mb-2">TARGET PACE</label>
-                <div className="text-sm font-mono" style={{ color: 'var(--primary-color)' }}>
+                <div className="text-xs text-gray-400 mb-3 font-medium">TARGET PACE</div>
+                <div className="text-lg font-bold text-cyan-400 font-mono">
                   {paceZones.target}/km
                 </div>
               </div>
               <div className="text-center">
-                <label className="block text-xs text-gray-400 mb-2">EASY PACE</label>
-                <div className="text-sm font-mono text-green-400">
+                <div className="text-xs text-gray-400 mb-3 font-medium">EASY PACE</div>
+                <div className="text-lg font-bold text-green-400 font-mono">
                   {paceZones.easy}/km
                 </div>
               </div>
               <div className="text-center">
-                <label className="block text-xs text-gray-400 mb-2">TEMPO PACE</label>
-                <div className="text-sm font-mono text-orange-400">
+                <div className="text-xs text-gray-400 mb-3 font-medium">TEMPO PACE</div>
+                <div className="text-lg font-bold text-orange-400 font-mono">
                   {paceZones.tempo}/km
                 </div>
               </div>
               <div className="text-center">
-                <label className="block text-xs text-gray-400 mb-2">5K PACE</label>
-                <div className="text-sm font-mono text-purple-400">
+                <div className="text-xs text-gray-400 mb-3 font-medium">5K PACE</div>
+                <div className="text-lg font-bold text-purple-400 font-mono">
                   {paceZones.fiveK}/km
                 </div>
               </div>
             </div>
-            
-            <div className="text-right">
-              <div className="text-xs text-gray-400">AI PREDICTED</div>
-              <div className="text-lg font-mono text-cyan-400">{predictedTime}</div>
-            </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       </div>
+      
+      <div className="h-8"></div>
 
       {/* Week Navigation */}
-      <div className="p-6">
+      <div className="px-6 pt-8 pb-6">
         <div className="max-w-6xl mx-auto">
           <div className="flex items-center justify-between mb-6">
             <h1 style={{ fontSize: '24px', fontWeight: 'bold' }}>
@@ -590,32 +1302,34 @@ const AITrainingCalendar = () => {
           </div>
 
           {/* Weekly Overview */}
-          <div className="mb-6 p-4 rounded-lg border" style={{ backgroundColor: 'var(--surface-color)', borderColor: '#3a3a4a' }}>
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <div style={{ fontSize: '12px', color: '#9ca3af' }}>Total Distance</div>
-                <div style={{ fontSize: '20px', fontWeight: 'bold', color: 'var(--primary-color)' }}>
-                  {getTotalWeekDistance()}km
-                </div>
-              </div>
-              <div>
-                <div style={{ fontSize: '12px', color: '#9ca3af' }}>Training Focus</div>
-                <div style={{ fontSize: '20px', fontWeight: 'bold' }}>
-                  {currentWeek <= 4 ? 'Base Building' : 
-                   currentWeek <= 8 ? 'Build Phase' :
-                   currentWeek <= 10 ? 'Peak Phase' : 'Taper'}
-                </div>
-              </div>
-              <div>
-                <div style={{ fontSize: '12px', color: '#9ca3af' }}>AI Modifications</div>
-                <div style={{ fontSize: '20px', fontWeight: 'bold' }} className="flex items-center gap-2">
-                  <div className="w-5 h-5 bg-cyan-400 rounded-full flex items-center justify-center text-xs font-bold text-black">
-                    AI
+          <div className="mx-6 mb-8">
+            <Card className="bg-gray-800/60 border-gray-600 backdrop-blur-sm">
+              <CardContent className="p-6">
+                <div className="grid grid-cols-3 gap-8">
+                  <div className="text-center">
+                    <div className="text-xs text-gray-400 mb-3 font-medium">TRAINING FOCUS</div>
+                    <div className="text-lg font-bold text-white">
+                      {currentWeek <= 4 ? 'Base Building' : 
+                       currentWeek <= 8 ? 'Build Phase' :
+                       currentWeek <= 10 ? 'Peak Phase' : 'Taper'}
+                    </div>
                   </div>
-                  {Object.keys(modifiedSessions).length}
+                  <div className="text-center">
+                    <div className="text-xs text-gray-400 mb-3 font-medium">CURRENT WEEK</div>
+                    <div className="text-lg font-bold text-cyan-400">
+                      Week {currentWeek} of 12
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-xs text-gray-400 mb-3 font-medium">AI MODIFICATIONS</div>
+                    <div className="text-lg font-bold text-white flex items-center justify-center gap-2">
+                      <span className="text-xs bg-cyan-400 text-black px-2 py-1 rounded font-bold">AI</span>
+                      {Object.keys(modifiedSessions).length}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           </div>
 
           {/* Calendar Grid */}
@@ -629,11 +1343,17 @@ const AITrainingCalendar = () => {
               <div
                 key={day}
                 style={{
-                  backgroundColor: '#2a2a3a',
+                  backgroundColor: dragOverDay === day && draggedFromDay !== day ? 'rgba(50, 184, 198, 0.2)' : '#2a2a3a',
+                  border: dragOverDay === day && draggedFromDay !== day ? '2px dashed rgba(50, 184, 198, 0.8)' : '1px solid #3a3a4a',
                   borderRadius: '8px',
                   minHeight: '180px',
-                  padding: '12px'
+                  padding: '12px',
+                  transition: 'all 0.2s ease',
+                  position: 'relative'
                 }}
+                onDragOver={(e) => handleDragOver(e, day)}
+                onDragLeave={(e) => handleDragLeave(e, day)}
+                onDrop={(e) => handleDrop(e, day)}
               >
                 <h3 style={{ 
                   fontWeight: '600', 
@@ -644,39 +1364,151 @@ const AITrainingCalendar = () => {
                 }}>
                   {day}
                 </h3>
+                
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {(weekData.weeklySchedule[day] || []).map((session) => (
-                    <div
-                      key={session.id}
-                      className={`p-2 rounded cursor-pointer transition-all hover:scale-105 ${getSessionColor(session)}`}
-                      style={{ fontSize: '11px' }}
-                      onClick={() => {
-                        if (session.type === 'running') {
-                          setSelectedSession(session);
-                        }
-                      }}
-                    >
-                      <div style={{ fontWeight: '500' }}>{getSessionText(session)}</div>
-                      {session.time && (
-                        <div style={{ fontSize: '10px', opacity: 0.75, marginTop: '4px' }}>
-                          {session.time}
-                        </div>
-                      )}
-                      {session.aiModified && (
-                        <div style={{ fontSize: '9px', color: '#00d4ff', marginTop: '2px' }}>
-                          Pace: {session.pace} (was {session.originalPace})
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                  {(weekData.weeklySchedule[day] || []).map((session) => {
+                    const isDragging = draggedSession?.id === session.id;
+                    const canDrag = session.type !== 'rest' && !completedSessions.has(session.id);
+                    
+                    return (
+                      <div
+                        key={session.id}
+                        className={`p-3 rounded-lg cursor-pointer transition-all hover:scale-105 ${getSessionColor(session)} ${
+                          isDragging ? 'opacity-50 scale-95 rotate-2' : ''
+                        } ${canDrag ? 'cursor-grab hover:cursor-grabbing' : ''}`}
+                        draggable={canDrag}
+                        onDragStart={(e) => canDrag && handleDragStart(e, session, day)}
+                        onDragEnd={handleDragEnd}
+                        onClick={() => {
+                          if (session.type === 'running' && !isDragging) {
+                            setSelectedSession(session);
+                          }
+                        }}
+                        style={{ position: 'relative' }}
+                      >
+                        {getSessionText(session)}
+                        
+                        {session.time && (
+                          <div className="text-xs opacity-60 mt-2 flex items-center gap-1">
+                            <span>🕐</span>
+                            {session.time}
+                          </div>
+                        )}
+                        
+                        {session.aiModified && (
+                          <div className="text-xs text-cyan-400 mt-1 flex items-center gap-1">
+                            <span>🤖</span>
+                            Pace: {session.pace} (was {session.originalPace})
+                          </div>
+                        )}
+                        
+                        {canDrag && !isDragging && (
+                          <div className="absolute top-1 right-1 text-xs opacity-50">
+                            ⋮⋮
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
+                
+                {/* Drop zone indicator */}
+                {dragOverDay === day && draggedFromDay !== day && (
+                  <div style={{
+                    position: 'absolute',
+                    bottom: '12px',
+                    left: '12px',
+                    right: '12px',
+                    padding: '8px',
+                    border: '2px dashed rgba(50, 184, 198, 0.8)',
+                    borderRadius: '4px',
+                    textAlign: 'center',
+                    fontSize: '12px',
+                    color: 'rgba(50, 184, 198, 1)',
+                    backgroundColor: 'rgba(50, 184, 198, 0.1)'
+                  }}>
+                    Drop here to reschedule
+                  </div>
+                )}
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      {/* ENHANCED Session Modal with Complete Breakdown */}
+      {/* AI Rebalancing Modal */}
+      {showRebalanceModal && rebalanceResult && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div style={{ 
+            backgroundColor: 'var(--surface-color)', 
+            borderRadius: '8px', 
+            padding: '24px', 
+            maxWidth: '600px', 
+            width: '100%',
+            border: '1px solid #3a3a4a',
+            maxHeight: '80vh',
+            overflowY: 'auto'
+          }}>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-6 h-6 bg-cyan-400 rounded-full flex items-center justify-center text-xs font-bold text-black">
+                AI
+              </div>
+              <h2 style={{ fontSize: '18px', fontWeight: 'bold' }}>
+                Schedule Rebalancing Analysis
+              </h2>
+              <div style={{ marginLeft: 'auto', fontSize: '12px', color: '#9ca3af' }}>
+                Confidence: {Math.round((rebalanceResult.confidence || 0.7) * 100)}%
+              </div>
+            </div>
+
+            <div className={`mb-4 p-3 rounded-lg border ${
+              rebalanceResult.impact === 'positive' ? 'bg-green-900 bg-opacity-30 border-green-400' :
+              rebalanceResult.impact === 'negative' ? 'bg-red-900 bg-opacity-30 border-red-400' :
+              'bg-yellow-900 bg-opacity-30 border-yellow-400'
+            }`}>
+              <div className={`text-sm font-semibold ${
+                rebalanceResult.impact === 'positive' ? 'text-green-400' :
+                rebalanceResult.impact === 'negative' ? 'text-red-400' : 'text-yellow-400'
+              }`}>
+                {(rebalanceResult.impact || 'neutral').charAt(0).toUpperCase() + (rebalanceResult.impact || 'neutral').slice(1)} Impact
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <p style={{ fontSize: '14px', color: '#d1d5db', lineHeight: '1.5' }}>
+                {rebalanceResult.analysis || 'Schedule change completed.'}
+              </p>
+            </div>
+
+            {rebalanceResult.recommendations && rebalanceResult.recommendations.length > 0 && (
+              <div className="mb-6">
+                <h3 style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '8px' }}>
+                  AI Recommendations:
+                </h3>
+                <ul style={{ fontSize: '13px', color: '#d1d5db' }}>
+                  {rebalanceResult.recommendations.map((rec: string, idx: number) => (
+                    <li key={idx} style={{ marginBottom: '4px', paddingLeft: '8px' }}>
+                      • {rec}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowRebalanceModal(false)}
+                className="px-4 py-2 rounded text-white"
+                style={{ backgroundColor: '#6b7280', fontSize: '14px' }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Session Modal */}
       {selectedSession && !showFeedback && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div style={{ 
@@ -700,11 +1532,10 @@ const AITrainingCalendar = () => {
                 onClick={() => setSelectedSession(null)}
                 style={{ fontSize: '24px', color: '#9ca3af' }}
               >
-                ×
+                &times;
               </button>
             </div>
 
-            {/* Session Overview Grid */}
             <div style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(3, 1fr)',
@@ -741,11 +1572,9 @@ const AITrainingCalendar = () => {
               </div>
             </div>
 
-            {/* COMPLETE Session Breakdown */}
             <div className="mb-6">
               <h3 className="text-sm font-semibold text-gray-300 mb-3">Session Breakdown</h3>
               
-              {/* Warmup */}
               <div className="mb-3 p-3 rounded-lg bg-green-900 bg-opacity-20 border border-green-500 border-opacity-30">
                 <div className="flex items-center gap-2 mb-2">
                   <Activity size={16} className="text-green-400" />
@@ -754,7 +1583,6 @@ const AITrainingCalendar = () => {
                 <p className="text-sm text-gray-300">{selectedSession.warmup}</p>
               </div>
 
-              {/* Main Set */}
               <div className="mb-3 p-3 rounded-lg bg-blue-900 bg-opacity-20 border border-blue-500 border-opacity-30">
                 <div className="flex items-center gap-2 mb-2">
                   <MapPin size={16} className="text-blue-400" />
@@ -763,7 +1591,6 @@ const AITrainingCalendar = () => {
                 <p className="text-sm text-gray-300">{selectedSession.mainSet}</p>
               </div>
 
-              {/* Cooldown */}
               <div className="mb-3 p-3 rounded-lg bg-purple-900 bg-opacity-20 border border-purple-500 border-opacity-30">
                 <div className="flex items-center gap-2 mb-2">
                   <Clock size={16} className="text-purple-400" />
@@ -807,7 +1634,10 @@ const AITrainingCalendar = () => {
         </div>
       )}
 
-      {/* Enhanced Feedback Form */}
+      {/* Enhanced AI Modal */}
+      <EnhancedAIModal />
+
+      {/* Feedback Form */}
       {showFeedback && selectedSession && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div style={{ 
@@ -837,7 +1667,6 @@ const AITrainingCalendar = () => {
             </div>
             
             <form onSubmit={handleFeedbackSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {/* Row 1: Completed & Actual Pace */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', color: '#9ca3af', marginBottom: '8px' }}>
@@ -867,7 +1696,6 @@ const AITrainingCalendar = () => {
                 </div>
               </div>
 
-              {/* Row 2: Difficulty & RPE */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', color: '#9ca3af', marginBottom: '8px' }}>
@@ -905,7 +1733,6 @@ const AITrainingCalendar = () => {
                 </div>
               </div>
 
-              {/* AI Trigger Indicators */}
               {(difficultyValue >= 8 || rpeValue >= 8) && (
                 <div className="p-3 bg-orange-900 bg-opacity-30 rounded border border-orange-400">
                   <div className="flex items-center gap-2 text-orange-300">
@@ -930,7 +1757,6 @@ const AITrainingCalendar = () => {
                 </div>
               )}
 
-              {/* Row 3: Feeling */}
               <div>
                 <label style={{ display: 'block', fontSize: '12px', color: '#9ca3af', marginBottom: '8px' }}>
                   Feeling
@@ -948,7 +1774,6 @@ const AITrainingCalendar = () => {
                 </select>
               </div>
 
-              {/* Row 4: Comments */}
               <div>
                 <label style={{ display: 'block', fontSize: '12px', color: '#9ca3af', marginBottom: '8px' }}>
                   Comments
@@ -962,7 +1787,6 @@ const AITrainingCalendar = () => {
                 />
               </div>
 
-              {/* Submit Buttons */}
               <div className="flex gap-3 mt-4">
                 <button
                   type="submit"
@@ -988,7 +1812,6 @@ const AITrainingCalendar = () => {
         </div>
       )}
 
-      {/* Drag and Drop Styles */}
       <style jsx>{`
         .drag-over {
           background-color: rgba(50, 184, 198, 0.2) !important;

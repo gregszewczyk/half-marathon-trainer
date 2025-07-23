@@ -1,0 +1,120 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("PRISMA_DATABASE_URL")
+  directUrl = env("DATABASE_URL")
+}
+
+model TrainingPlan {
+  id        String   @id @default(cuid())
+  userId    String   @default("default_user") // For now, single user
+  goalTime  String   @default("2:00:00")
+  predictedTime String @default("2:00:00")
+  currentWeek Int    @default(1)
+  startDate DateTime @default(now())
+  raceDate  DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sessions SessionFeedback[]
+  aiAdjustments AIAdjustment[]
+
+  @@map("training_plans")
+}
+
+model SessionFeedback {
+  id             String   @id @default(cuid())
+  sessionId      String   // e.g., "tue-run-1"
+  week           Int
+  day            String
+  sessionType    String   // "running", "gym", "rest"
+  sessionSubType String   // "easy", "tempo", "push", "pull", etc.
+  
+  // Planned session details
+  plannedDistance Float?
+  plannedPace     String?
+  plannedTime     String?
+  
+  // Actual session feedback
+  completed       String   // "yes", "no", "partial"
+  actualDistance  Float?
+  actualPace      String?
+  difficulty      Int      // 1-10
+  rpe            Int      // 1-10  
+  feeling        String   // "great", "good", "ok", "tired", "poor"
+  comments       String?
+  
+  // Timestamps
+  submittedAt    DateTime @default(now())
+  
+  // Relations
+  trainingPlan   TrainingPlan @relation(fields: [trainingPlanId], references: [id], onDelete: Cascade)
+  trainingPlanId String
+
+  @@map("session_feedback")
+}
+
+model AIAdjustment {
+  id             String   @id @default(cuid())
+  week           Int
+  triggerSession String   // Which session triggered this adjustment
+  
+  // AI decision
+  action         String   // "increase", "decrease", "maintain"
+  severity       String   // "minor", "moderate", "significant"
+  reasoning      String
+  
+  // Session changes
+  paceAdjustment     Int     // seconds per km (+ or -)
+  distanceAdjustment Float   // km (+ or -)
+  intensityAdjustment String // "easier", "harder", "same"
+  sessionsToModify   Int     // how many upcoming sessions
+  
+  // Goal time update
+  goalTimeUpdate     Boolean @default(false)
+  newGoalTime        String?
+  confidence         Float?
+  improvement        Int?    // seconds faster/slower
+  
+  // Modifications applied
+  modifications      String[] // Array of specific changes made
+  
+  // Timestamps
+  createdAt          DateTime @default(now())
+  
+  // Relations
+  trainingPlan       TrainingPlan @relation(fields: [trainingPlanId], references: [id], onDelete: Cascade)
+  trainingPlanId     String
+
+  @@map("ai_adjustments")
+}
+
+model ModifiedSession {
+  id              String   @id @default(cuid())
+  sessionId       String   @unique // e.g., "tue-run-1"
+  week            Int
+  
+  // Original values
+  originalPace     String?
+  originalDistance Float?
+  
+  // Modified values  
+  modifiedPace     String?
+  modifiedDistance Float?
+  modifiedMainSet  String?
+  
+  // AI modification details
+  aiModified       Boolean  @default(true)
+  aiReason         String?
+  modifiedAt       DateTime @default(now())
+  
+  // Which AI adjustment caused this
+  aiAdjustmentId   String?
+  
+  @@map("modified_sessions")
+}
