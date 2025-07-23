@@ -13,6 +13,7 @@ import { useSearchParams } from 'next/navigation'
 export default function DashboardPage() {
 
   const [userId, setUserId] = useState('default')
+  
 
   useEffect(() => {
     // Get user parameter from URL on client side only
@@ -27,6 +28,9 @@ export default function DashboardPage() {
   console.log('Current user:', userId) // For testing
   // Use the custom hook for real training data
   const trainingStats = useTrainingStats(userId);
+
+  if (!trainingStats || userId === 'default') {
+  console.log(`🎯 Rendering dashboard for user: ${userId} with completion: ${trainingStats.weekCompletion}%`);}
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-cyan-900 p-4 md:p-6">
@@ -43,7 +47,7 @@ export default function DashboardPage() {
         </div>
 
 {/* Enhanced Quick Stats with better visual design */}
-<div className="grid grid-cols-2 md:grid-cols-2 xl:grid-cols-4 gap-3 md:gap-6">
+<div key={userId} className="grid grid-cols-2 md:grid-cols-2 xl:grid-cols-4 gap-3 md:gap-6">
   {/* Days to Race */}
 <Card className="dashboard-card bg-gray-800/60 border-gray-600 backdrop-blur-sm hover:bg-gray-800/80 transition-all duration-300">
   <CardContent className="card-content p-2 md:p-6 text-center">

@@ -14,10 +14,15 @@ export function useTrainingStats(userId: string = 'default'): TrainingStats {
     weekDistance: 22,
     predictedTime: "2:00:00"
   });
+  
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const fetchCompletionData = async () => {
       try {
+        setIsLoading(true);
+        console.log(`🔄 Fetching data for user: ${userId}`);
+        
         const raceDate = new Date('2025-10-12');
         const today = new Date();
         const daysToRace = Math.ceil((raceDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
@@ -28,7 +33,7 @@ export function useTrainingStats(userId: string = 'default'): TrainingStats {
         
         if (response.ok) {
           const { feedback } = await response.json();
-          console.log(`📊 Raw feedback data for ${userId}:`, feedback); // DEBUG
+          console.log(`📊 Raw feedback data for ${userId}:`, feedback);
           
           // Calculate completion percentage
           const totalRunningSessions = 4;
@@ -36,15 +41,14 @@ export function useTrainingStats(userId: string = 'default'): TrainingStats {
             feedback.filter((f: any) => {
               const isCompleted = f.completed === 'yes';
               const isRunning = f.sessionType === 'running';
-              console.log(`📋 Session ${f.sessionId} (${userId}): completed=${f.completed}, type=${f.sessionType}, matches=${isCompleted && isRunning}`); // DEBUG
               return isCompleted && isRunning;
             }).length : 0;
           
-          console.log(`✅ Completed running sessions for ${userId}: ${completedSessions}/${totalRunningSessions}`); // DEBUG
           weekCompletion = Math.round((completedSessions / totalRunningSessions) * 100);
-          console.log(`📈 Week completion for ${userId}: ${weekCompletion}%`); // DEBUG
+          console.log(`✅ FINAL completion for ${userId}: ${weekCompletion}%`);
         }
 
+        // Reset state completely
         setCompletionData({
           daysToRace,
           weekCompletion,
@@ -52,14 +56,16 @@ export function useTrainingStats(userId: string = 'default'): TrainingStats {
           predictedTime: "2:00:00"
         });
         
+        setIsLoading(false);
+        
       } catch (error) {
         console.error(`Error fetching completion data for ${userId}:`, error);
-        // Keep default values on error
+        setIsLoading(false);
       }
     };
 
     fetchCompletionData();
-  }, [userId]); // Re-fetch when userId changes
+  }, [userId]);
 
   return completionData;
 }
