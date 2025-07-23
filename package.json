@@ -4,8 +4,6 @@
   "description": "AI-powered half marathon training app with Garmin integration",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
     "start": "next start",
     "lint": "next lint",
     "lint:fix": "next lint --fix",
@@ -17,7 +15,9 @@
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
     "postinstall": "prisma generate",
-    "migrate:data": "node scripts/migrate-data.js"
+    "migrate:data": "node scripts/migrate-data.js",
+      "build": "npm install --legacy-peer-deps && next build",
+    "dev": "npm install --legacy-peer-deps && next dev"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.4.1",
