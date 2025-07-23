@@ -65,12 +65,15 @@ if (trainingStats.isLoading) {
 
 {/* Enhanced Quick Stats with better visual design */}
 <div 
-  className="gap-3 md:gap-6"
   style={{
     display: 'grid',
-    gridTemplateColumns: screenWidth <= 768 ? 'repeat(2, 1fr)' : screenWidth <= 1279 ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)'
+    gridTemplateColumns: screenWidth <= 768 ? '1fr 1fr' : screenWidth <= 1279 ? '1fr 1fr' : '1fr 1fr 1fr 1fr',
+    gap: screenWidth <= 768 ? '0.75rem' : '1.5rem'
   }}
 >
+  <div className="text-white text-sm p-2 bg-blue-500">
+  Debug: Screen {screenWidth}px, Grid should be: {screenWidth <= 768 ? '2 columns' : '4 columns'}
+</div>
   {/* Days to Race */}
 <Card className="dashboard-card bg-gray-800/60 border-gray-600 backdrop-blur-sm hover:bg-gray-800/80 transition-all duration-300">
 <CardContent 
