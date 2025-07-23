@@ -17,8 +17,8 @@ export function useTrainingStats(userId: string = 'default'): TrainingStats {
     predictedTime: "2:00:00",
     isLoading: true,
   });
-  
-  const [isLoading, setIsLoading] = useState(true);
+// Removed top-level await fetch; fetching is handled inside useEffect.
+// Removed duplicate isLoading state.
 
   useEffect(() => {
     const fetchCompletionData = async () => {
