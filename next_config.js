@@ -7,18 +7,12 @@ const nextConfig = {
     eslint: {
     ignoreDuringBuilds: true,
   },
-  experimental: {
-    serverComponentsExternalPackages: ['@prisma/client'],
-  },
     experimental: {
     ...nextConfig.experimental,
     instrumentationHook: true,
   },
     typescript: {
     ignoreBuildErrors: true,
-  },
-    eslint: {
-    ignoreDuringBuilds: true,
   },
   images: {
     domains: ['connect.garmin.com', 'lh3.googleusercontent.com', 'avatars.githubusercontent.com'],
