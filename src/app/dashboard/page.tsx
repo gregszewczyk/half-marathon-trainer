@@ -25,6 +25,17 @@ export default function DashboardPage() {
     }
   }, [])
   
+const [screenWidth, setScreenWidth] = useState(0);
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setScreenWidth(window.innerWidth);
+      const handleResize = () => setScreenWidth(window.innerWidth);
+      window.addEventListener('resize', handleResize);
+      return () => window.removeEventListener('resize', handleResize);
+    }
+    return undefined;
+  }, []);
+
   console.log('Current user:', userId) // For testing
   // Use the custom hook for real training data
   const trainingStats = useTrainingStats(userId);
@@ -35,9 +46,13 @@ if (trainingStats.isLoading) {
   console.log(`🎯 Rendering dashboard for user: ${userId} with completion: ${trainingStats.weekCompletion}%`);}
 
   return (
+
+    
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-cyan-900 p-4 md:p-6">
       <div className="max-w-7xl mx-auto space-y-6">
-        
+        <div className="fixed top-0 right-0 bg-red-500 text-white p-2 z-50">
+  Width: {screenWidth}px
+</div>
         {/* Header */}
         <div className="text-center space-y-2">
 <h1 className="text-4xl md:text-5xl font-bold text-white">
