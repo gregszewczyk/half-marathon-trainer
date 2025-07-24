@@ -20,6 +20,14 @@ interface Session {
   aiModified?: boolean;
   originalPace?: string;
   originalDistance?: number;
+  targetRPE?: RPETarget;
+}
+
+interface RPETarget {
+  min: number;
+  max: number;
+  description: string;
+  context: string;
 }
 
 interface WeekData {
@@ -87,6 +95,12 @@ interface EnhancedAIResult {
     recommendedPhase: string;
     reason: string;
   };
+  // 🆕 NEW: Add weekTransitionSummary property
+  weekTransitionSummary?: {
+    completedWeekPerformance: string;
+    upcomingWeekAdjustments: string;
+    keyFocusAreas: string[];
+  };
 }
 
 const AITrainingCalendar = () => {
@@ -112,10 +126,17 @@ const AITrainingCalendar = () => {
   const [rebalanceResult, setRebalanceResult] = useState<any>(null);
   const [showRebalanceModal, setShowRebalanceModal] = useState(false);
 
+  const [showMotivationalAI, setShowMotivationalAI] = useState(false);
+  const [motivationalMessage, setMotivationalMessage] = useState<string>('');
+
   // Enhanced AI state
   const [enhancedAiResult, setEnhancedAiResult] = useState<EnhancedAIResult | null>(null);
   const [showEnhancedAiModal, setShowEnhancedAiModal] = useState(false);
   const [selectedAlternative, setSelectedAlternative] = useState<number>(0);
+
+  const [showWeekTransition, setShowWeekTransition] = useState(false);
+const [weekAnalysisResult, setWeekAnalysisResult] = useState<EnhancedAIResult | null>(null);
+const [weekTransitionLoading, setWeekTransitionLoading] = useState(false);
 
   const [originalGoalTime, setOriginalGoalTime] = useState('2:00:00');
 
@@ -216,6 +237,37 @@ useEffect(() => {
     return Math.round(totalSeconds / 60);
   };
 
+  const getTargetRPE = (sessionType: string): RPETarget => {
+  const rpeTargets: { [key: string]: RPETarget } = {
+    'easy': {
+      min: 3,
+      max: 5,
+      description: 'Conversational pace',
+      context: 'You should be able to chat comfortably during this run'
+    },
+    'tempo': {
+      min: 6,
+      max: 7,
+      description: 'Comfortably hard',
+      context: 'Sustainable effort - challenging but controlled'
+    },
+    'intervals': {
+      min: 8,
+      max: 9,
+      description: 'Near maximum effort',
+      context: 'High intensity - should feel very challenging'
+    },
+    'long': {
+      min: 4,
+      max: 6,
+      description: 'Progressively harder',
+      context: 'Start easy, build to moderate effort by the end'
+    }
+  };
+
+  return rpeTargets[sessionType] ?? rpeTargets['easy']!;
+};
+
   const getWeekData = (weekNum: number): WeekData => {
     const paceZones = calculatePaceZones(goalTime);
     
@@ -258,7 +310,8 @@ const showGymSessions = userId === null || userId === 'default';
         madeRunning: showGymSessions, // Only for default user
         warmup: '10 min easy jog + dynamic stretching',
         mainSet: `${plan.easyDistance}km steady at easy pace${showGymSessions ? ' with MadeRunning' : ''}`,
-        cooldown: '5 min walk + stretching'
+        cooldown: '5 min walk + stretching',
+        targetRPE: getTargetRPE('easy')
       }
     ],
     Tuesday: showGymSessions ? [
@@ -288,7 +341,8 @@ const showGymSessions = userId === null || userId === 'default';
         madeRunning: showGymSessions, // Only for default user
         warmup: '15 min easy + 4x100m strides',
         mainSet: `${Math.round(plan.tempoDistance * 0.6)}km tempo at threshold pace${showGymSessions ? ' with MadeRunning' : ''}`,
-        cooldown: '10 min easy jog + stretching'
+        cooldown: '10 min easy jog + stretching',
+        targetRPE: getTargetRPE('tempo')
       },
       // Only show gym session for default user
       ...(showGymSessions ? [{ 
@@ -318,7 +372,8 @@ const showGymSessions = userId === null || userId === 'default';
         madeRunning: false, // This one is solo for everyone
         warmup: '10 min easy jog + dynamic stretching',
         mainSet: `${plan.intervalDistance}km steady at easy pace (solo)`,
-        cooldown: '5 min walk + stretching'
+        cooldown: '5 min walk + stretching',
+        targetRPE: getTargetRPE('easy')
       }
     ],
     Friday: showGymSessions ? [
@@ -356,7 +411,8 @@ const showGymSessions = userId === null || userId === 'default';
         madeRunning: showGymSessions, // Only for default user
         warmup: '15 min easy jog + dynamic stretching',
         mainSet: `${plan.longDistance}km progressive long run${showGymSessions ? ' with MadeRunning' : ''}`,
-        cooldown: '10 min walk + full stretching routine'
+        cooldown: '10 min walk + full stretching routine',
+        targetRPE: getTargetRPE('long')
       }
     ],
     Sunday: [{ 
@@ -383,6 +439,179 @@ const showGymSessions = userId === null || userId === 'default';
     };
   };
 
+const checkWeekCompletionAndAnalyze = useCallback(async () => {
+  if (!userId) return;
+  
+  // Only analyze when week completion reaches 100%
+  const completionPercentage = getWeekCompletionPercentage();
+  
+  if (completionPercentage === 100 && currentWeek < 12) {
+    console.log(`🧠 Week ${currentWeek} completed (100%)! Triggering proactive AI analysis...`);
+    
+    // Small delay to ensure all feedback is processed
+    setTimeout(() => {
+      triggerProactiveWeekAnalysis();
+    }, 2000);
+  }
+}, [currentWeek, userId, completedSessions]);
+
+const triggerProactiveWeekAnalysis = async () => {
+  if (weekTransitionLoading || currentWeek >= 12) return;
+  
+  setWeekTransitionLoading(true);
+  
+  try {
+    console.log(`🤖 Starting proactive analysis for Week ${currentWeek} → Week ${currentWeek + 1}`);
+    
+    // Get all feedback from the completed week
+    const weekFeedback = await getWeekFeedback(currentWeek);
+    const recentFeedback = await getRecentFeedback();
+    const fitnessTrajectory = assessFitnessTrajectory(recentFeedback);
+    
+    // Calculate week performance metrics
+    const weekMetrics = calculateWeekMetrics(weekFeedback);
+    
+    const response = await fetch('/api/ai/proactive-week-analysis', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        completedWeek: currentWeek,
+        upcomingWeek: currentWeek + 1,
+        weekFeedback,
+        weekMetrics,
+        fitnessTrajectory,
+        goalTime,
+        userId,
+        currentPhase: getCurrentTrainingPhase(currentWeek),
+        weeksRemaining: 12 - currentWeek
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to get proactive week analysis');
+    }
+
+    const data = await response.json();
+    setWeekAnalysisResult(data.weekAnalysis);
+    setShowWeekTransition(true);
+    
+    console.log(`✅ Proactive analysis complete for Week ${currentWeek + 1}:`, data.weekAnalysis);
+    
+  } catch (error) {
+    console.error('❌ Proactive week analysis failed:', error);
+    
+    // Fallback analysis
+    setWeekAnalysisResult({
+      analysis: `Congratulations on completing Week ${currentWeek}! Based on your consistency, Week ${currentWeek + 1} will continue building your fitness toward your ${formatGoalTimeForDisplay(goalTime)} goal.`,
+      impact: 'positive',
+      confidence: 0.75,
+      goalImpact: 'helps_sub2',
+      recommendations: [
+        `Great progress through Week ${currentWeek}! Keep maintaining this consistency.`,
+        `Week ${currentWeek + 1} will build on your current fitness level.`,
+        'Focus on recovery between sessions to maintain quality training.',
+        'Trust the process - you\'re building toward race day success!'
+      ],
+      crossWeekModifications: [],
+      weekTransitionSummary: {
+        completedWeekPerformance: 'solid_progress',
+        upcomingWeekAdjustments: 'maintain_progression',
+        keyFocusAreas: ['consistency', 'recovery', 'pacing']
+      }
+    });
+    setShowWeekTransition(true);
+  } finally {
+    setWeekTransitionLoading(false);
+  }
+};
+
+const getWeekFeedback = async (weekNumber: number) => {
+  try {
+    const response = await fetch(`/api/feedback?weekNumber=${weekNumber}&userId=${userId}&all=true`);
+    if (response.ok) {
+      const { feedback } = await response.json();
+      return Array.isArray(feedback) ? feedback : [];
+    }
+  } catch (error) {
+    console.error('Error fetching week feedback:', error);
+  }
+  return [];
+};
+
+const calculateWeekMetrics = (weekFeedback: any[]) => {
+  if (!weekFeedback || weekFeedback.length === 0) {
+    return {
+      completionRate: 0,
+      averageRPE: 5,
+      averageDifficulty: 5,
+      paceConsistency: 'unknown',
+      sessionTypes: {},
+      totalSessions: 0,
+      feelingDistribution: {}
+    };
+  }
+  
+  const runningSessions = weekFeedback.filter(f => f.sessionType === 'running');
+  const completedSessions = runningSessions.filter(f => f.completed === 'yes');
+  
+  const averageRPE = runningSessions.reduce((sum, f) => sum + (f.rpe || 5), 0) / runningSessions.length;
+  const averageDifficulty = runningSessions.reduce((sum, f) => sum + (f.difficulty || 5), 0) / runningSessions.length;
+  
+  // Group by session type
+  const sessionTypes = runningSessions.reduce((acc: any, f) => {
+    const type = f.sessionSubType || 'unknown';
+    if (!acc[type]) acc[type] = { count: 0, avgRPE: 0, completed: 0 };
+    acc[type].count++;
+    acc[type].avgRPE = (acc[type].avgRPE + (f.rpe || 5)) / acc[type].count;
+    if (f.completed === 'yes') acc[type].completed++;
+    return acc;
+  }, {});
+  
+  // Feeling distribution
+  const feelingDistribution = runningSessions.reduce((acc: any, f) => {
+    const feeling = f.feeling || 'unknown';
+    acc[feeling] = (acc[feeling] || 0) + 1;
+    return acc;
+  }, {});
+  
+  return {
+    completionRate: completedSessions.length / runningSessions.length,
+    averageRPE: Math.round(averageRPE * 10) / 10,
+    averageDifficulty: Math.round(averageDifficulty * 10) / 10,
+    sessionTypes,
+    totalSessions: runningSessions.length,
+    feelingDistribution,
+    paceConsistency: calculatePaceConsistency(completedSessions)
+  };
+};
+
+const getCurrentTrainingPhase = (week: number): string => {
+  if (week <= 4) return 'base_building';
+  if (week <= 8) return 'build_phase';
+  if (week <= 10) return 'peak_phase';
+  return 'taper_phase';
+};
+
+const calculatePaceConsistency = (sessions: any[]): string => {
+  const pacesWithTargets = sessions.filter(s => s.actualPace && s.plannedPace);
+  if (pacesWithTargets.length === 0) return 'insufficient_data';
+  
+  const paceVariations = pacesWithTargets.map(s => {
+    const actual = paceToSeconds(s.actualPace);
+    const planned = paceToSeconds(s.plannedPace);
+    return Math.abs(actual - planned);
+  });
+  
+  const avgVariation = paceVariations.reduce((sum, v) => sum + v, 0) / paceVariations.length;
+  
+  if (avgVariation < 10) return 'excellent';
+  if (avgVariation < 20) return 'good';
+  if (avgVariation < 30) return 'moderate';
+  return 'needs_improvement';
+};
+
   const [weekData, setWeekData] = useState<WeekData>(() => getWeekData(currentWeek));
 
 useEffect(() => {
@@ -391,7 +620,6 @@ useEffect(() => {
 
 useEffect(() => {
   const loadCompletedSessions = async () => {
-    // Don't load anything until userId is determined
     if (!userId) {
       console.log('⏳ Waiting for userId to be determined...');
       return;
@@ -413,10 +641,13 @@ useEffect(() => {
           });
         }
         
-        // Clear previous completed sessions first, then set new ones
         setCompletedSessions(completed);
         console.log(`📋 FINAL: Loaded ${completed.size} completed sessions for week ${currentWeek}, user: ${userId}`);
-        console.log('📋 Completed session IDs:', Array.from(completed));
+        
+        // 🆕 NEW: Check for week completion after loading sessions
+        if (completed.size > 0) {
+          checkWeekCompletionAndAnalyze();
+        }
       }
     } catch (error) {
       console.error('Error loading completed sessions:', error);
@@ -424,7 +655,7 @@ useEffect(() => {
   };
   
   loadCompletedSessions();
-}, [currentWeek, userId]); // This will now only run when userId is actually set
+}, [currentWeek, userId, checkWeekCompletionAndAnalyze]);
 
   // Enhanced AI functions
 const getRecentFeedback = async () => {
@@ -509,6 +740,43 @@ const getRecentFeedback = async () => {
       }
     }, 4000);
   };
+
+const getMotivationalAIFeedback = async (sessionData: any, feedbackData: any): Promise<string> => {
+  try {
+    const response = await fetch('/api/ai/motivational-feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        sessionData,
+        feedbackData,
+        currentWeek,
+        goalTime,
+        userId,
+        completionPercentage: getWeekCompletionPercentage()
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to get AI feedback');
+    }
+
+    const result = await response.json();
+    return result.motivationalFeedback;
+  } catch (error) {
+    console.error('Motivational AI feedback failed:', error);
+    
+    // 🆕 NEW: Fallback motivational messages when AI is unavailable
+    const fallbackMessages = [
+      `Great work completing your ${sessionData.type} session! You're ${getWeekCompletionPercentage()}% through this week's training.`,
+      `Excellent consistency! Every session brings you closer to your ${formatGoalTimeForDisplay(goalTime)} goal.`,
+      `Nice job staying on track! Your dedication to the training plan is showing.`,
+      `Well done! Remember, consistency is key to achieving your half marathon goals.`,
+      `Strong effort today! You're building the fitness needed for race day success.`
+    ];
+    
+    return fallbackMessages[Math.floor(Math.random() * fallbackMessages.length)] ?? '';
+  }
+};
 
   const analyzeScheduleRebalancingEnhanced = async (session: Session | null, fromDay: string, toDay: string) => {
     if (!session) return;
@@ -754,175 +1022,206 @@ const getRecentFeedback = async () => {
   };
 
   // FEEDBACK SUBMISSION
-  const handleFeedbackSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const formData = new FormData(e.target as HTMLFormElement);
-    
-    const feedback = {
-      completed: formData.get('completed') as string,
-      actualPace: formData.get('actualPace') as string | null,
-      difficulty: difficultyValue,
-      rpe: rpeValue,
-      feeling: formData.get('feeling') as string,
-      comments: formData.get('comments') as string | null
-    };
+const handleFeedbackSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  e.preventDefault();
+  const formData = new FormData(e.target as HTMLFormElement);
+  
+  const feedback = {
+    completed: formData.get('completed') as string,
+    actualPace: formData.get('actualPace') as string | null,
+    difficulty: difficultyValue,
+    rpe: rpeValue,
+    feeling: formData.get('feeling') as string,
+    comments: formData.get('comments') as string | null
+  };
 
-    try {
-      if (!selectedSession) {
-        throw new Error('No session selected');
-      }
-
-      if (completedSessions.has(selectedSession.id)) {
-        const confirmOverwrite = window.confirm(
-          'You have already submitted feedback for this session. Do you want to update it?'
-        );
-        if (!confirmOverwrite) {
-          setShowFeedback(false);
-          return;
-        }
-      }
-
-      console.log('💾 Saving feedback for session:', selectedSession.id);
-      
-      const dayMap: { [key: string]: string } = {
-        'mon': 'monday',
-        'tue': 'tuesday', 
-        'wed': 'wednesday',
-        'thu': 'thursday',
-        'fri': 'friday',
-        'sat': 'saturday',
-        'sun': 'sunday'
-      };
-      
-      const sessionIdParts = selectedSession.id.split('-');
-      const dayPrefix = sessionIdParts.length > 0 ? sessionIdParts[0] : '';
-      const day = dayPrefix && dayMap[dayPrefix] ? dayMap[dayPrefix] : 'unknown';
-      
-      const feedbackData = {
-        sessionId: selectedSession.id,
-        weekNumber: currentWeek,
-        day: day,
-        sessionType: selectedSession.type,
-        sessionSubType: selectedSession.subType,
-        plannedDistance: selectedSession.distance,
-        plannedPace: selectedSession.pace,
-        plannedTime: selectedSession.time,
-        completed: feedback.completed,
-        actualPace: feedback.actualPace,
-        difficulty: feedback.difficulty,
-        rpe: feedback.rpe,
-        feeling: feedback.feeling,
-        comments: feedback.comments
-      };
-      
-const feedbackResponse = await fetch('/api/feedback', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    ...feedbackData,
-    userId: userId  // Add userId to the feedback data
-  })
-});
-
-      if (!feedbackResponse.ok) {
-        const errorData = await feedbackResponse.json();
-        throw new Error(`Failed to save feedback: ${errorData.error || 'Unknown error'}`);
-      }
-
-      const result = await feedbackResponse.json();
-      console.log('✅ Feedback saved to database:', result);
-console.log('🎯 TrainingCalendar current userId:', userId);
-      // Show success message
-      const successPanel = document.createElement('div');
-      successPanel.className = 'fixed top-4 right-4 z-50 bg-green-900 border border-green-400 rounded-lg p-4 shadow-lg';
-      successPanel.innerHTML = `
-        <div class="flex items-center gap-2 text-green-300">
-          <div class="w-5 h-5 bg-green-400 rounded-full flex items-center justify-center text-xs font-bold text-black">✓</div>
-          <span class="font-bold">Feedback Saved!</span>
-        </div>
-        <p class="text-sm text-green-200 mt-1">Training data saved to database successfully.</p>
-      `;
-      document.body.appendChild(successPanel);
-      
-      if (feedback.completed === 'yes') {
-        setCompletedSessions(prev => new Set([...prev, selectedSession.id]));
-        console.log('✅ Session marked as completed:', selectedSession.id);
-      } else if (feedback.completed === 'no') {
-        setCompletedSessions(prev => {
-          const updated = new Set([...prev]);
-          updated.delete(selectedSession.id);
-          return updated;
-        });
-        console.log('❌ Session marked as not completed:', selectedSession.id);
-      }
-
-      setTimeout(() => {
-        if (document.body.contains(successPanel)) {
-          document.body.removeChild(successPanel);
-        }
-      }, 3000);
-
-      // AI auto-adjustment
-      if (feedback.difficulty >= 8 || feedback.rpe >= 8 || 
-          (feedback.difficulty <= 3 && feedback.rpe <= 3 && feedback.completed === 'yes')) {
-        
-        try {
-          console.log('🤖 Triggering AI auto-adjustment...');
-          
-          const sessionData = {
-            type: selectedSession.subType || 'unknown',
-            plannedDistance: selectedSession.distance || 0,
-            actualDistance: selectedSession.distance || 0,
-            plannedPace: selectedSession.pace || '0:00',
-            actualPace: feedback.actualPace || selectedSession.pace || '0:00',
-            rpe: feedback.rpe,
-            difficulty: feedback.difficulty,
-            feeling: feedback.feeling,
-            comments: feedback.comments,
-            completed: feedback.completed
-          };
-
-          const adjustment = await getAIAdjustment(sessionData);
-          
-          applyAIAdjustments(adjustment);
-          setAiAdjustment(adjustment);
-          setShowAiPanel(true);
-          
-          console.log('✅ AI auto-adjustment applied');
-          
-        } catch (aiError: unknown) {
-          const aiErrorMessage = aiError instanceof Error ? aiError.message : 'Unknown AI error';
-          console.error('AI auto-adjustment failed:', aiErrorMessage);
-        }
-      }
-
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      console.error('❌ Failed to save feedback:', errorMessage);
-      
-      const errorPanel = document.createElement('div');
-      errorPanel.className = 'fixed top-4 right-4 z-50 bg-red-900 border border-red-400 rounded-lg p-4 shadow-lg';
-      errorPanel.innerHTML = `
-        <div class="flex items-center gap-2 text-red-300">
-          <div class="w-5 h-5 bg-red-400 rounded-full flex items-center justify-center text-xs font-bold text-black">✗</div>
-          <span class="font-bold">Save Failed</span>
-        </div>
-        <p class="text-sm text-red-200 mt-1">${errorMessage}</p>
-      `;
-      document.body.appendChild(errorPanel);
-      
-      setTimeout(() => {
-        if (document.body.contains(errorPanel)) {
-          document.body.removeChild(errorPanel);
-        }
-      }, 5000);
+  try {
+    if (!selectedSession) {
+      throw new Error('No session selected');
     }
 
-    setShowFeedback(false);
-    setSelectedSession(null);
-    setDifficultyValue(5);
-    setRpeValue(5);
-  };
+    if (completedSessions.has(selectedSession.id)) {
+      const confirmOverwrite = window.confirm(
+        'You have already submitted feedback for this session. Do you want to update it?'
+      );
+      if (!confirmOverwrite) {
+        setShowFeedback(false);
+        return;
+      }
+    }
+
+    console.log('💾 Saving feedback for session:', selectedSession.id);
+    
+    const dayMap: { [key: string]: string } = {
+      'mon': 'monday',
+      'tue': 'tuesday', 
+      'wed': 'wednesday',
+      'thu': 'thursday',
+      'fri': 'friday',
+      'sat': 'saturday',
+      'sun': 'sunday'
+    };
+    
+    const sessionIdParts = selectedSession.id.split('-');
+    const dayPrefix = sessionIdParts.length > 0 ? sessionIdParts[0] : '';
+    const day = dayPrefix && dayMap[dayPrefix] ? dayMap[dayPrefix] : 'unknown';
+    
+    const feedbackData = {
+      sessionId: selectedSession.id,
+      weekNumber: currentWeek,
+      day: day,
+      sessionType: selectedSession.type,
+      sessionSubType: selectedSession.subType,
+      plannedDistance: selectedSession.distance,
+      plannedPace: selectedSession.pace,
+      plannedTime: selectedSession.time,
+      completed: feedback.completed,
+      actualPace: feedback.actualPace,
+      difficulty: feedback.difficulty,
+      rpe: feedback.rpe,
+      feeling: feedback.feeling,
+      comments: feedback.comments
+    };
+    
+    const feedbackResponse = await fetch('/api/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...feedbackData,
+        userId: userId
+      })
+    });
+
+    if (!feedbackResponse.ok) {
+      const errorData = await feedbackResponse.json();
+      throw new Error(`Failed to save feedback: ${errorData.error || 'Unknown error'}`);
+    }
+
+    const result = await feedbackResponse.json();
+    console.log('✅ Feedback saved to database:', result);
+    console.log('🎯 TrainingCalendar current userId:', userId);
+
+    // Show success message
+    const successPanel = document.createElement('div');
+    successPanel.className = 'fixed top-4 right-4 z-50 bg-green-900 border border-green-400 rounded-lg p-4 shadow-lg';
+    successPanel.innerHTML = `
+      <div class="flex items-center gap-2 text-green-300">
+        <div class="w-5 h-5 bg-green-400 rounded-full flex items-center justify-center text-xs font-bold text-black">✓</div>
+        <span class="font-bold">Feedback Saved!</span>
+      </div>
+      <p class="text-sm text-green-200 mt-1">Training data saved to database successfully.</p>
+    `;
+    document.body.appendChild(successPanel);
+    
+    if (feedback.completed === 'yes') {
+      setCompletedSessions(prev => new Set([...prev, selectedSession.id]));
+      console.log('✅ Session marked as completed:', selectedSession.id);
+    } else if (feedback.completed === 'no') {
+      setCompletedSessions(prev => {
+        const updated = new Set([...prev]);
+        updated.delete(selectedSession.id);
+        return updated;
+      });
+      console.log('❌ Session marked as not completed:', selectedSession.id);
+    }
+
+    setTimeout(() => {
+      if (document.body.contains(successPanel)) {
+        document.body.removeChild(successPanel);
+      }
+    }, 3000);
+
+    // 🆕 NEW: Always get motivational AI feedback after every session
+    console.log('🤖 Getting motivational AI feedback for every session...');
+    
+    const sessionData = {
+      type: selectedSession.subType || 'unknown',
+      plannedDistance: selectedSession.distance || 0,
+      actualDistance: selectedSession.distance || 0,
+      plannedPace: selectedSession.pace || '0:00',
+      actualPace: feedback.actualPace || selectedSession.pace || '0:00',
+      rpe: feedback.rpe,
+      difficulty: feedback.difficulty,
+      feeling: feedback.feeling,
+      comments: feedback.comments,
+      completed: feedback.completed
+    };
+
+    // Get motivational feedback for every session
+const motivationalFeedback = await getMotivationalAIFeedback(sessionData, {
+  ...feedback,
+  // 🆕 NEW: Include RPE target context
+  targetRPE: selectedSession.targetRPE,
+  rpeComparison: selectedSession.targetRPE ? {
+    target: `${selectedSession.targetRPE.min}-${selectedSession.targetRPE.max}`,
+    actual: feedback.rpe,
+    withinTarget: feedback.rpe >= selectedSession.targetRPE.min && 
+                  feedback.rpe <= selectedSession.targetRPE.max
+  } : null
+});
+    setMotivationalMessage(motivationalFeedback);
+    setShowMotivationalAI(true);
+
+    // ✏️ CHANGED: Still do auto-adjustments for extreme values, but also show motivational feedback
+    if (feedback.difficulty >= 8 || feedback.rpe >= 8 || 
+        (feedback.difficulty <= 3 && feedback.rpe <= 3 && feedback.completed === 'yes')) {
+      
+      try {
+        console.log('🤖 Triggering AI auto-adjustment...');
+        
+       const adjustment = await getAIAdjustment({
+  ...sessionData,
+  // 🆕 NEW: Add target RPE context for smarter AI decisions
+  targetRPE: selectedSession.targetRPE,
+  rpeAnalysis: selectedSession.targetRPE ? {
+    target: `${selectedSession.targetRPE.min}-${selectedSession.targetRPE.max}`,
+    actual: feedback.rpe,
+    withinTarget: feedback.rpe >= selectedSession.targetRPE.min && 
+                  feedback.rpe <= selectedSession.targetRPE.max,
+    sessionType: selectedSession.subType
+  } : null
+});       
+        
+
+        applyAIAdjustments(adjustment);
+        setAiAdjustment(adjustment);
+        setShowAiPanel(true);
+        
+        console.log('✅ AI auto-adjustment applied');
+        
+      } catch (aiError: unknown) {
+        const aiErrorMessage = aiError instanceof Error ? aiError.message : 'Unknown AI error';
+        console.error('AI auto-adjustment failed:', aiErrorMessage);
+      }
+    }
+
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    console.error('❌ Failed to save feedback:', errorMessage);
+    
+    const errorPanel = document.createElement('div');
+    errorPanel.className = 'fixed top-4 right-4 z-50 bg-red-900 border border-red-400 rounded-lg p-4 shadow-lg';
+    errorPanel.innerHTML = `
+      <div class="flex items-center gap-2 text-red-300">
+        <div class="w-5 h-5 bg-red-400 rounded-full flex items-center justify-center text-xs font-bold text-black">✗</div>
+        <span class="font-bold">Save Failed</span>
+      </div>
+      <p class="text-sm text-red-200 mt-1">${errorMessage}</p>
+    `;
+    document.body.appendChild(errorPanel);
+    
+    setTimeout(() => {
+      if (document.body.contains(errorPanel)) {
+        document.body.removeChild(errorPanel);
+      }
+    }, 5000);
+  }
+
+  setShowFeedback(false);
+  setSelectedSession(null);
+  setDifficultyValue(5);
+  setRpeValue(5);
+};
 
   // UTILITY FUNCTIONS
   const getSessionColor = (session: Session): string => {
@@ -1050,6 +1349,254 @@ console.log('🎯 TrainingCalendar current userId:', userId);
     
     return Math.round((completedCount / allSessions.length) * 100);
   };
+
+const ProactiveWeekTransitionModal = () => {
+  if (!showWeekTransition || !weekAnalysisResult) return null;
+
+  const result = weekAnalysisResult;
+
+  return (
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50" onClick={() => setShowWeekTransition(false)}>
+      <div className="bg-gray-800 rounded-lg border border-gray-600 max-w-4xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="p-6">
+          {/* Header */}
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
+              <span className="text-sm font-bold text-white">🧠</span>
+            </div>
+            <div className="flex-1">
+              <h2 className="text-2xl font-bold text-white">Week {currentWeek} Analysis Complete!</h2>
+              <div className="text-sm text-gray-400">AI recommendations for Week {currentWeek + 1}</div>
+            </div>
+            <button onClick={() => setShowWeekTransition(false)} className="text-gray-400 hover:text-white text-xl">&times;</button>
+          </div>
+
+          {/* Celebration Section */}
+          <div className="mb-6 p-4 bg-gradient-to-r from-green-900/30 to-blue-900/30 border border-green-500/30 rounded-lg text-center">
+            <div className="text-3xl mb-2">🎉</div>
+            <h3 className="text-xl font-bold text-white mb-2">Week {currentWeek} Complete!</h3>
+            <p className="text-green-200">
+              You've completed {getWeekCompletionPercentage()}% of your running sessions. 
+              Great consistency toward your {formatGoalTimeForDisplay(goalTime)} goal!
+            </p>
+          </div>
+
+          {/* Week Performance Summary */}
+          {(result as any).weekTransitionSummary && (
+            <div className="mb-6 p-4 bg-gray-700/50 rounded-lg">
+              <h3 className="font-semibold mb-3 text-white flex items-center gap-2">
+                📊 Week {currentWeek} Performance Summary
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                <div className="text-center p-3 bg-gray-600/30 rounded">
+                  <div className="text-xs text-gray-400 mb-1">OVERALL PERFORMANCE</div>
+                  <div className="font-bold text-cyan-400 capitalize">
+                    {(result as any).weekTransitionSummary.completedWeekPerformance.replace(/_/g, ' ')}
+                  </div>
+                </div>
+                <div className="text-center p-3 bg-gray-600/30 rounded">
+                  <div className="text-xs text-gray-400 mb-1">WEEK {currentWeek + 1} APPROACH</div>
+                  <div className="font-bold text-green-400 capitalize">
+                    {(result as any).weekTransitionSummary.upcomingWeekAdjustments.replace(/_/g, ' ')}
+                  </div>
+                </div>
+                <div className="text-center p-3 bg-gray-600/30 rounded">
+                  <div className="text-xs text-gray-400 mb-1">CONFIDENCE</div>
+                  <div className="font-bold text-white">
+                    {Math.round(result.confidence * 100)}%
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* AI Analysis */}
+          <div className="mb-6">
+            <div className="flex items-center gap-3 mb-3">
+              <div className={`w-3 h-3 rounded-full ${
+                result.impact === 'positive' ? 'bg-green-500' :
+                result.impact === 'negative' ? 'bg-red-500' : 'bg-yellow-500'
+              }`} />
+              <span className={`font-medium ${
+                result.impact === 'positive' ? 'text-green-400' :
+                result.impact === 'negative' ? 'text-red-400' : 'text-yellow-400'
+              }`}>
+                Week {currentWeek + 1} Outlook: {result.impact.charAt(0).toUpperCase() + result.impact.slice(1)}
+              </span>
+            </div>
+            <p className="text-gray-300 leading-relaxed">{result.analysis}</p>
+          </div>
+
+          {/* Recommendations */}
+          <div className="mb-6">
+            <h3 className="font-semibold mb-3 flex items-center gap-2 text-white">
+              💡 Week {currentWeek + 1} Focus Areas
+            </h3>
+            <div className="grid gap-3">
+              {result.recommendations.map((rec, idx) => (
+                <div key={idx} className="flex items-start gap-3 p-3 bg-blue-900/20 border border-blue-500/30 rounded-lg">
+                  <span className="text-blue-400 font-bold text-sm mt-1">{idx + 1}</span>
+                  <span className="text-gray-300 text-sm">{rec}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Cross-Week Modifications */}
+          {result.crossWeekModifications && result.crossWeekModifications.length > 0 && (
+            <div className="mb-6">
+              <h3 className="font-semibold mb-3 text-white flex items-center gap-2">
+                🔄 Week {currentWeek + 1} Training Adjustments
+              </h3>
+              <div className="space-y-3">
+                {result.crossWeekModifications.map((mod, idx) => (
+                  <div key={idx} className="p-4 bg-gray-700/50 rounded-lg border border-gray-600">
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="font-medium text-white">
+                        Week {mod.week}, {mod.day.charAt(0).toUpperCase() + mod.day.slice(1)}
+                      </div>
+                      <span className="px-2 py-1 rounded text-xs font-bold bg-purple-900 text-purple-200">
+                        {mod.modificationType.replace(/_/g, ' ')}
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-400">{mod.explanation}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex gap-3">
+            <button
+              onClick={() => {
+                if (result.crossWeekModifications && result.crossWeekModifications.length > 0) {
+                  applyCrossWeekModifications(result.crossWeekModifications);
+                }
+                setShowWeekTransition(false);
+                // Advance to next week
+                setCurrentWeek(prev => Math.min(12, prev + 1));
+              }}
+              className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 px-6 py-3 rounded-lg font-medium transition-colors text-white flex items-center justify-center gap-2"
+            >
+              <span>🚀</span>
+              Start Week {currentWeek + 1} with AI Optimizations
+            </button>
+            <button
+              onClick={() => {
+                setShowWeekTransition(false);
+                setCurrentWeek(prev => Math.min(12, prev + 1));
+              }}
+              className="px-6 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors text-white"
+            >
+              Continue Without Changes
+            </button>
+          </div>
+          
+          {/* Goal Focus Note */}
+          <div className="mt-4 p-3 bg-green-900/20 border border-green-500/30 rounded-lg text-center">
+            <p className="text-sm text-green-200">
+              🎯 <strong>Manchester Half Marathon:</strong> {12 - currentWeek} weeks remaining to achieve your {formatGoalTimeForDisplay(goalTime)} goal
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const MotivationalAIModal = () => {
+  if (!showMotivationalAI || !motivationalMessage) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50" onClick={() => setShowMotivationalAI(false)}>
+      <div className="bg-gray-800 rounded-lg border border-gray-600 max-w-2xl w-full max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="p-6">
+          {/* Header */}
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-8 h-8 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-full flex items-center justify-center">
+              <span className="text-xs font-bold text-black">AI</span>
+            </div>
+            <div className="flex-1">
+              <h2 className="text-xl font-bold text-white">AI Training Coach</h2>
+              <div className="text-sm text-gray-400">Session Analysis & Motivation</div>
+            </div>
+            <button onClick={() => setShowMotivationalAI(false)} className="text-gray-400 hover:text-white text-xl">&times;</button>
+          </div>
+
+          {/* Progress Ring */}
+          <div className="flex items-center justify-center mb-6">
+            <div className="relative w-24 h-24">
+              <svg className="w-24 h-24 transform -rotate-90" viewBox="0 0 100 100">
+                <circle 
+                  cx="50" 
+                  cy="50" 
+                  r="40" 
+                  stroke="currentColor" 
+                  strokeWidth="8"
+                  fill="none"
+                  className="text-gray-700"
+                />
+                <circle 
+                  cx="50" 
+                  cy="50" 
+                  r="40" 
+                  stroke="currentColor" 
+                  strokeWidth="8"
+                  fill="none"
+                  strokeDasharray={`${getWeekCompletionPercentage() * 2.51} 251`}
+                  className="text-cyan-400"
+                />
+              </svg>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="text-xl font-bold text-white">{getWeekCompletionPercentage()}%</span>
+              </div>
+            </div>
+          </div>
+
+          {/* AI Message */}
+          <div className="mb-6 p-4 bg-gradient-to-r from-cyan-900/20 to-blue-900/20 border border-cyan-500/30 rounded-lg">
+            <p className="text-gray-200 leading-relaxed text-center">
+              {motivationalMessage}
+            </p>
+          </div>
+
+          {/* Training Stats */}
+          <div className="grid grid-cols-3 gap-4 mb-6 text-center">
+            <div className="p-3 bg-gray-700/50 rounded-lg">
+              <div className="text-xs text-gray-400 mb-1">WEEK PROGRESS</div>
+              <div className="text-lg font-bold text-cyan-400">{getWeekCompletionPercentage()}%</div>
+            </div>
+            <div className="p-3 bg-gray-700/50 rounded-lg">
+              <div className="text-xs text-gray-400 mb-1">CURRENT WEEK</div>
+              <div className="text-lg font-bold text-white">{currentWeek}/12</div>
+            </div>
+            <div className="p-3 bg-gray-700/50 rounded-lg">
+              <div className="text-xs text-gray-400 mb-1">GOAL TARGET</div>
+              <div className="text-lg font-bold text-green-400">{formatGoalTimeForDisplay(goalTime)}</div>
+            </div>
+          </div>
+
+          {/* Action Button */}
+          <button
+            onClick={() => setShowMotivationalAI(false)}
+            className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 px-6 py-3 rounded-lg font-medium transition-colors text-white flex items-center justify-center gap-2"
+          >
+            <span>Continue Training</span>
+            <span>💪</span>
+          </button>
+          
+          {/* Goal Focus Note */}
+          <div className="mt-4 p-3 bg-green-900/20 border border-green-500/30 rounded-lg text-center">
+            <p className="text-sm text-green-200">
+              🎯 <strong>Next Goal:</strong> Manchester Half Marathon - October 12, 2025
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
   // Enhanced AI Modal Component
   const EnhancedAIModal = () => {
@@ -1662,39 +2209,60 @@ console.log('🎯 TrainingCalendar current userId:', userId);
 
 <div style={{
   display: 'grid',
-  gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
+  gridTemplateColumns: isMobile ? '1fr' : 'repeat(4, 1fr)',
   gap: '16px',
   marginBottom: '24px'
 }}>
-              <div>
-                <div style={{ fontSize: '12px', color: '#9ca3af' }}>DISTANCE</div>
-                <div style={{ fontSize: '16px', fontWeight: 'bold' }} className="flex items-center gap-2">
-                  {selectedSession.distance}km
-                  {selectedSession.aiModified && selectedSession.originalDistance !== selectedSession.distance && (
-                    <span className="text-xs text-cyan-400">
-                      (was {selectedSession.originalDistance}km)
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div>
-                <div style={{ fontSize: '12px', color: '#9ca3af' }}>TARGET PACE</div>
-                <div style={{ fontSize: '16px', fontWeight: 'bold' }} className="flex items-center gap-2">
-                  {selectedSession.pace}/km
-                  {selectedSession.aiModified && selectedSession.originalPace !== selectedSession.pace && (
-                    <span className="text-xs text-cyan-400">
-                      (was {selectedSession.originalPace}/km)
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div>
-                <div style={{ fontSize: '12px', color: '#9ca3af' }}>DURATION</div>
-                <div style={{ fontSize: '16px', fontWeight: 'bold' }}>
-                  ~{calculateDuration(selectedSession.distance || 5, selectedSession.pace || '6:00')} mins
-                </div>
-              </div>
+                <div>
+    <div style={{ fontSize: '12px', color: '#9ca3af' }}>DISTANCE</div>
+    <div style={{ fontSize: '16px', fontWeight: 'bold' }} className="flex items-center gap-2">
+      {selectedSession.distance}km
+      {selectedSession.aiModified && selectedSession.originalDistance !== selectedSession.distance && (
+        <span className="text-xs text-cyan-400">
+          (was {selectedSession.originalDistance}km)
+        </span>
+      )}
+    </div>
+  </div>
+  <div>
+    <div style={{ fontSize: '12px', color: '#9ca3af' }}>TARGET PACE</div>
+    <div style={{ fontSize: '16px', fontWeight: 'bold' }} className="flex items-center gap-2">
+      {selectedSession.pace}/km
+      {selectedSession.aiModified && selectedSession.originalPace !== selectedSession.pace && (
+        <span className="text-xs text-cyan-400">
+          (was {selectedSession.originalPace}/km)
+        </span>
+      )}
+    </div>
+  </div>
+  <div>
+    <div style={{ fontSize: '12px', color: '#9ca3af' }}>DURATION</div>
+    <div style={{ fontSize: '16px', fontWeight: 'bold' }}>
+      ~{calculateDuration(selectedSession.distance || 5, selectedSession.pace || '6:00')} mins
+    </div>
+  </div>
+  {/* 🆕 NEW: Target RPE column */}
+  <div>
+    <div style={{ fontSize: '12px', color: '#9ca3af' }}>TARGET RPE</div>
+    <div style={{ fontSize: '16px', fontWeight: 'bold' }} className="flex items-center gap-2">
+      {selectedSession.targetRPE ? (
+        <>
+          <span className="text-orange-400">
+            {selectedSession.targetRPE.min}-{selectedSession.targetRPE.max}
+          </span>
+          <div className="group relative">
+            <span className="text-xs text-gray-400 cursor-help">ℹ️</span>
+            <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity w-48 text-center">
+              {selectedSession.targetRPE.description}
             </div>
+          </div>
+        </>
+      ) : (
+        <span className="text-gray-400">-</span>
+      )}
+    </div>
+  </div>
+</div>
 
             <div className="mb-6">
               <h3 className="text-sm font-semibold text-gray-300 mb-3">Session Breakdown</h3>
@@ -1738,6 +2306,24 @@ console.log('🎯 TrainingCalendar current userId:', userId);
               </div>
             )}
 
+            {selectedSession.targetRPE && (
+  <div className="mb-6 p-4 bg-orange-900/20 border border-orange-500/30 rounded-lg">
+    <div className="flex items-center gap-2 mb-2">
+      <span className="text-lg">🎯</span>
+      <span className="text-sm font-semibold text-orange-400">Target Effort Level</span>
+    </div>
+    <div className="text-sm text-gray-300 space-y-2">
+      <div className="flex items-center gap-2">
+        <span className="font-medium text-orange-300">RPE {selectedSession.targetRPE.min}-{selectedSession.targetRPE.max}:</span>
+        <span>{selectedSession.targetRPE.description}</span>
+      </div>
+      <p className="text-xs text-orange-200 italic">
+        💡 {selectedSession.targetRPE.context}
+      </p>
+    </div>
+  </div>
+)}
+
             <div className="flex gap-3">
               <button
                 onClick={() => setShowFeedback(true)}
@@ -1757,7 +2343,8 @@ console.log('🎯 TrainingCalendar current userId:', userId);
           </div>
         </div>
       )}
-
+  <ProactiveWeekTransitionModal />
+      <MotivationalAIModal />
       {/* Enhanced AI Modal */}
       <EnhancedAIModal />
 
@@ -1890,9 +2477,21 @@ console.log('🎯 TrainingCalendar current userId:', userId);
     <span>Very Hard</span>
   </div>
 </div>
-                <div>
+<div>
   <label style={{ display: 'block', fontSize: '12px', color: '#9ca3af', marginBottom: '8px' }}>
     RPE (1-10): <span className="text-cyan-400 font-bold">{rpeValue}</span>
+    {/* 🆕 NEW: Show target vs actual comparison */}
+    {selectedSession?.targetRPE && (
+      <span className={`ml-2 text-xs px-2 py-1 rounded ${
+        rpeValue >= selectedSession.targetRPE.min && rpeValue <= selectedSession.targetRPE.max
+          ? 'bg-green-900 text-green-300' 
+          : rpeValue > selectedSession.targetRPE.max
+          ? 'bg-red-900 text-red-300'
+          : 'bg-yellow-900 text-yellow-300'
+      }`}>
+        Target: {selectedSession.targetRPE.min}-{selectedSession.targetRPE.max}
+      </span>
+    )}
   </label>
   <div 
     style={{ 
@@ -1922,6 +2521,27 @@ console.log('🎯 TrainingCalendar current userId:', userId);
     <span>Easy</span>
     <span>Maximal</span>
   </div>
+  {/* 🆕 NEW: RPE interpretation based on session type */}
+  {selectedSession?.targetRPE && (
+    <div className="mt-2 text-xs">
+      {rpeValue >= selectedSession.targetRPE.min && rpeValue <= selectedSession.targetRPE.max ? (
+        <div className="text-green-300 flex items-center gap-1">
+          <span>✅</span>
+          <span>Perfect effort for {selectedSession.subType} run!</span>
+        </div>
+      ) : rpeValue > selectedSession.targetRPE.max ? (
+        <div className="text-red-300 flex items-center gap-1">
+          <span>⚠️</span>
+          <span>Higher than expected - consider if pacing was too aggressive</span>
+        </div>
+      ) : (
+        <div className="text-yellow-300 flex items-center gap-1">
+          <span>💡</span>
+          <span>Lower than target - could potentially push a bit harder next time</span>
+        </div>
+      )}
+    </div>
+  )}
 </div>
               </div>
 

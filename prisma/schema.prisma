@@ -10,9 +10,50 @@ datasource db {
   directUrl = env("DATABASE_URL")
 }
 
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String   // Hashed password
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  profile UserProfile?
+  
+ 
+  trainingPlans TrainingPlan[]
+  sessionFeedback SessionFeedback[]
+  
+  @@map("users")
+}
+
+model UserProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+  
+  raceType     RaceType @default(HALF_MARATHON)
+  targetTime   String   @default("2:00:00")  // Target race time
+  raceDate     DateTime? // Target race date
+  fitnessLevel FitnessLevel @default(INTERMEDIATE)
+  
+  trainingDaysPerWeek Int @default(4)
+  preferredDifficulty Int @default(5) // 1-10 scale
+  
+  age     Int?
+  weight  Float? // in kg
+  gender  String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("user_profiles")
+}
+
 model TrainingPlan {
   id        String   @id @default(cuid())
-  userId    String   @default("default_user") // For now, single user
+    userId      String 
   goalTime  String   @default("2:00:00")
   predictedTime String @default("2:00:00")
   currentWeek Int    @default(1)
@@ -24,11 +65,14 @@ model TrainingPlan {
   sessions SessionFeedback[]
   aiAdjustments AIAdjustment[]
 
+  //user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@map("training_plans")
 }
 
 model SessionFeedback {
   id             String   @id @default(cuid())
+  userId          String
   sessionId      String   // e.g., "tue-run-1"
   week           Int
   day            String
@@ -53,10 +97,25 @@ model SessionFeedback {
   submittedAt    DateTime @default(now())
   
   // Relations
+//user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   trainingPlan   TrainingPlan @relation(fields: [trainingPlanId], references: [id], onDelete: Cascade)
-  trainingPlanId String
+  trainingPlanId String       
 
   @@map("session_feedback")
+}
+enum RaceType {
+  FIVE_K
+  TEN_K
+  HALF_MARATHON
+  FULL_MARATHON
+  CUSTOM
+}
+
+enum FitnessLevel {
+  BEGINNER      // New to running
+  INTERMEDIATE  // Regular runner, some race experience  
+  ADVANCED      // Experienced racer, consistent training
+  ELITE         // Competitive runner
 }
 
 model AIAdjustment {
