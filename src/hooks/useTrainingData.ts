@@ -17,12 +17,16 @@ export function useTrainingStats(userId: string = 'default'): TrainingStats {
     predictedTime: "2:00:00",
     isLoading: true,
   });
-// Removed top-level await fetch; fetching is handled inside useEffect.
-// Removed duplicate isLoading state.
 
   useEffect(() => {
+    // Don't fetch if userId is null or empty
+    if (!userId) {
+      console.log('⏳ useTrainingStats waiting for userId...');
+      return;
+    }
+
     const fetchCompletionData = async () => {
-      setCompletionData(prev => ({ ...prev, isLoading: true })); // Set loading first
+      setCompletionData(prev => ({ ...prev, isLoading: true }));
       
       try {
         console.log(`🔄 Loading data for user: ${userId}`);
@@ -61,7 +65,7 @@ export function useTrainingStats(userId: string = 'default'): TrainingStats {
     };
 
     fetchCompletionData();
-  }, [userId]);
+  }, [userId]); // This will only run when userId is actually set
 
   return completionData;
 }

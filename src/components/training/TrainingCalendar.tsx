@@ -117,6 +117,44 @@ const AITrainingCalendar = () => {
   const [showEnhancedAiModal, setShowEnhancedAiModal] = useState(false);
   const [selectedAlternative, setSelectedAlternative] = useState<number>(0);
 
+  const [originalGoalTime, setOriginalGoalTime] = useState('2:00:00');
+
+  useEffect(() => {
+  // Track if user manually changes goal or if AI updates it
+  if (goalTime !== originalGoalTime) {
+    console.log(`🎯 Goal time changed: ${originalGoalTime} → ${goalTime}`);
+  }
+}, [goalTime, originalGoalTime]);
+
+  const [userId, setUserId] = useState<string | null>(null);
+useEffect(() => {
+  // Read userId from URL parameter
+  const urlParams = new URLSearchParams(window.location.search);
+  const userParam = urlParams.get('user');
+  const detectedUserId = userParam || 'default';
+  setUserId(detectedUserId);
+  console.log('🔍 TrainingCalendar detected user:', detectedUserId);
+}, []);
+
+useEffect(() => {
+  console.log('🎯 CompletedSessions state updated:', Array.from(completedSessions), 'for user:', userId);
+}, [completedSessions, userId]);
+
+const formatGoalTimeForDisplay = (goalTimeString: string): string => {
+  // Convert "2:00:00" to "sub-2:00" or "1:55:00" to "sub-1:55"
+  const parts = goalTimeString.split(':');
+  if (parts.length >= 2) {
+    const hours = parseInt(parts[0] || '0');
+    const minutes = parseInt(parts[1]|| '1');
+    if (hours === 1) {
+      return `sub-1:${minutes.toString().padStart(2, '0')}`;
+    } else if (hours === 2) {
+      return `sub-2:${minutes.toString().padStart(2, '0')}`;
+    }
+  }
+  return `sub-${goalTimeString.substring(0, 4)}`;
+};
+
   // Add this after your existing state variables
 const [isMobile, setIsMobile] = useState(false);
 
@@ -198,115 +236,135 @@ useEffect(() => {
 
     const plan = weeklyPlans[weekNum as keyof typeof weeklyPlans] || weeklyPlans[1];
 
+const showGymSessions = userId === null || userId === 'default';
+
     const baseSchedule: { [key: string]: Session[] } = {
-      Monday: [
-        { 
-          id: `mon-gym-${weekNum}`, 
-          type: 'gym', 
-          subType: 'push', 
-          duration: '60 min', 
-          time: '04:30' 
-        },
-        { 
-          id: `mon-run-${weekNum}`, 
-          type: 'running', 
-          subType: 'easy', 
-          distance: plan.easyDistance, 
-          pace: paceZones.easy, 
-          time: '17:00', 
-          madeRunning: true,
-          warmup: '10 min easy jog + dynamic stretching',
-          mainSet: `${plan.easyDistance}km steady at easy pace with MadeRunning`,
-          cooldown: '5 min walk + stretching'
-        }
-      ],
-      Tuesday: [
-        { 
-          id: `tue-gym-${weekNum}`, 
-          type: 'gym', 
-          subType: 'pull', 
-          duration: '60 min', 
-          time: '04:30' 
-        }
-      ],
-      Wednesday: [
-        { 
-          id: `wed-run-${weekNum}`, 
-          type: 'running', 
-          subType: 'tempo', 
-          distance: plan.tempoDistance, 
-          pace: paceZones.tempo, 
-          time: '05:00', 
-          madeRunning: true,
-          warmup: '15 min easy + 4x100m strides',
-          mainSet: `${Math.round(plan.tempoDistance * 0.6)}km tempo at threshold pace with MadeRunning`,
-          cooldown: '10 min easy jog + stretching'
-        },
-        { 
-          id: `wed-gym-${weekNum}`, 
-          type: 'gym', 
-          subType: 'legs', 
-          duration: '60 min', 
-          time: '06:00' 
-        }
-      ],
-      Thursday: [
-        { 
-          id: `thu-gym-${weekNum}`, 
-          type: 'gym', 
-          subType: 'push', 
-          duration: '60 min', 
-          time: '04:30' 
-        },
-        { 
-          id: `thu-run-${weekNum}`, 
-          type: 'running', 
-          subType: 'easy', 
-          distance: plan.intervalDistance, 
-          pace: paceZones.easy, 
-          time: '18:00', 
-          madeRunning: false,
-          warmup: '10 min easy jog + dynamic stretching',
-          mainSet: `${plan.intervalDistance}km steady at easy pace (solo)`,
-          cooldown: '5 min walk + stretching'
-        }
-      ],
-      Friday: [
-        { 
-          id: `fri-gym-${weekNum}`, 
-          type: 'gym', 
-          subType: 'pull', 
-          duration: '60 min', 
-          time: '04:30' 
-        }
-      ],
-      Saturday: [
-        { 
-          id: `sat-gym-${weekNum}`, 
-          type: 'gym', 
-          subType: 'legs', 
-          duration: '60 min', 
-          time: '06:00' 
-        },
-        { 
-          id: `sat-run-${weekNum}`, 
-          type: 'running', 
-          subType: 'long', 
-          distance: plan.longDistance, 
-          pace: paceZones.easy, 
-          time: '09:00', 
-          madeRunning: true,
-          warmup: '15 min easy jog + dynamic stretching',
-          mainSet: `${plan.longDistance}km progressive long run with MadeRunning`,
-          cooldown: '10 min walk + full stretching routine'
-        }
-      ],
-      Sunday: [{ 
-        id: `sun-rest-${weekNum}`, 
-        type: 'rest', 
-        subType: 'easy' 
-      }]
-    };
+    Monday: [
+      // Only show gym session for default user
+      ...(showGymSessions ? [{ 
+        id: `mon-gym-${weekNum}`, 
+        type: 'gym' as const, 
+        subType: 'push' as const, 
+        duration: '60 min', 
+        time: '04:30' 
+      }] : []),
+      { 
+        id: `mon-run-${weekNum}`, 
+        type: 'running' as const, 
+        subType: 'easy' as const, 
+        distance: plan.easyDistance, 
+        pace: paceZones.easy, 
+        time: '17:00', 
+        madeRunning: showGymSessions, // Only for default user
+        warmup: '10 min easy jog + dynamic stretching',
+        mainSet: `${plan.easyDistance}km steady at easy pace${showGymSessions ? ' with MadeRunning' : ''}`,
+        cooldown: '5 min walk + stretching'
+      }
+    ],
+    Tuesday: showGymSessions ? [
+      { 
+        id: `tue-gym-${weekNum}`, 
+        type: 'gym' as const, 
+        subType: 'pull' as const, 
+        duration: '60 min', 
+        time: '04:30' 
+      }
+    ] : [
+      // For non-default users, show rest day instead of gym
+      { 
+        id: `tue-rest-${weekNum}`, 
+        type: 'rest' as const, 
+        subType: 'easy' as const
+      }
+    ],
+    Wednesday: [
+      { 
+        id: `wed-run-${weekNum}`, 
+        type: 'running' as const, 
+        subType: 'tempo' as const, 
+        distance: plan.tempoDistance, 
+        pace: paceZones.tempo, 
+        time: '05:00', 
+        madeRunning: showGymSessions, // Only for default user
+        warmup: '15 min easy + 4x100m strides',
+        mainSet: `${Math.round(plan.tempoDistance * 0.6)}km tempo at threshold pace${showGymSessions ? ' with MadeRunning' : ''}`,
+        cooldown: '10 min easy jog + stretching'
+      },
+      // Only show gym session for default user
+      ...(showGymSessions ? [{ 
+        id: `wed-gym-${weekNum}`, 
+        type: 'gym' as const, 
+        subType: 'legs' as const, 
+        duration: '60 min', 
+        time: '06:00' 
+      }] : [])
+    ],
+    Thursday: [
+      // Only show gym session for default user
+      ...(showGymSessions ? [{ 
+        id: `thu-gym-${weekNum}`, 
+        type: 'gym' as const, 
+        subType: 'push' as const, 
+        duration: '60 min', 
+        time: '04:30' 
+      }] : []),
+      { 
+        id: `thu-run-${weekNum}`, 
+        type: 'running' as const, 
+        subType: 'easy' as const, 
+        distance: plan.intervalDistance, 
+        pace: paceZones.easy, 
+        time: '18:00', 
+        madeRunning: false, // This one is solo for everyone
+        warmup: '10 min easy jog + dynamic stretching',
+        mainSet: `${plan.intervalDistance}km steady at easy pace (solo)`,
+        cooldown: '5 min walk + stretching'
+      }
+    ],
+    Friday: showGymSessions ? [
+      { 
+        id: `fri-gym-${weekNum}`, 
+        type: 'gym' as const, 
+        subType: 'pull' as const, 
+        duration: '60 min', 
+        time: '04:30' 
+      }
+    ] : [
+      // For non-default users, show rest day instead of gym
+      { 
+        id: `fri-rest-${weekNum}`, 
+        type: 'rest' as const, 
+        subType: 'easy' as const
+      }
+    ],
+    Saturday: [
+      // Only show gym session for default user
+      ...(showGymSessions ? [{ 
+        id: `sat-gym-${weekNum}`, 
+        type: 'gym' as const, 
+        subType: 'legs' as const, 
+        duration: '60 min', 
+        time: '06:00' 
+      }] : []),
+      { 
+        id: `sat-run-${weekNum}`, 
+        type: 'running' as const, 
+        subType: 'long' as const, 
+        distance: plan.longDistance, 
+        pace: paceZones.easy, 
+        time: '09:00', 
+        madeRunning: showGymSessions, // Only for default user
+        warmup: '15 min easy jog + dynamic stretching',
+        mainSet: `${plan.longDistance}km progressive long run${showGymSessions ? ' with MadeRunning' : ''}`,
+        cooldown: '10 min walk + full stretching routine'
+      }
+    ],
+    Sunday: [{ 
+      id: `sun-rest-${weekNum}`, 
+      type: 'rest' as const, 
+      subType: 'easy' as const
+    }]
+  };
 
     const modifiedSchedule: { [key: string]: Session[] } = {};
     Object.keys(baseSchedule).forEach(day => {
@@ -327,50 +385,61 @@ useEffect(() => {
 
   const [weekData, setWeekData] = useState<WeekData>(() => getWeekData(currentWeek));
 
-  useEffect(() => {
-    setWeekData(getWeekData(currentWeek));
-  }, [currentWeek, goalTime, modifiedSessions]);
+useEffect(() => {
+  setWeekData(getWeekData(currentWeek));
+}, [currentWeek, goalTime, modifiedSessions, userId]); // Add userId here
 
-  useEffect(() => {
-    const loadCompletedSessions = async () => {
-      try {
-        const response = await fetch(`/api/feedback?weekNumber=${currentWeek}`);
-        if (response.ok) {
-          const { feedback } = await response.json();
-          const completed = new Set<string>();
-          
-          if (Array.isArray(feedback)) {
-            feedback.forEach((f: any) => {
-              if (f.completed === 'yes') {
-                completed.add(f.sessionId);
-              }
-            });
-          }
-          
-          setCompletedSessions(completed);
-          console.log(`📋 Loaded ${completed.size} completed sessions for week ${currentWeek}`);
-        }
-      } catch (error) {
-        console.error('Error loading completed sessions:', error);
-      }
-    };
-    
-    loadCompletedSessions();
-  }, [currentWeek]);
+useEffect(() => {
+  const loadCompletedSessions = async () => {
+    // Don't load anything until userId is determined
+    if (!userId) {
+      console.log('⏳ Waiting for userId to be determined...');
+      return;
+    }
 
-  // Enhanced AI functions
-  const getRecentFeedback = async () => {
     try {
-      const response = await fetch(`/api/feedback?weekNumber=${currentWeek}&recent=5`);
+      console.log(`🔄 Loading completed sessions for user: ${userId}, week: ${currentWeek}`);
+      
+      const response = await fetch(`/api/feedback?weekNumber=${currentWeek}&userId=${userId}`);
       if (response.ok) {
         const { feedback } = await response.json();
-        return Array.isArray(feedback) ? feedback : [];
+        const completed = new Set<string>();
+        
+        if (Array.isArray(feedback)) {
+          feedback.forEach((f: any) => {
+            if (f.completed === 'yes') {
+              completed.add(f.sessionId);
+            }
+          });
+        }
+        
+        // Clear previous completed sessions first, then set new ones
+        setCompletedSessions(completed);
+        console.log(`📋 FINAL: Loaded ${completed.size} completed sessions for week ${currentWeek}, user: ${userId}`);
+        console.log('📋 Completed session IDs:', Array.from(completed));
       }
     } catch (error) {
-      console.error('Error fetching recent feedback:', error);
+      console.error('Error loading completed sessions:', error);
     }
-    return [];
   };
+  
+  loadCompletedSessions();
+}, [currentWeek, userId]); // This will now only run when userId is actually set
+
+  // Enhanced AI functions
+const getRecentFeedback = async () => {
+  try {
+    // Include userId in the API call
+    const response = await fetch(`/api/feedback?weekNumber=${currentWeek}&recent=5&userId=${userId}`);
+    if (response.ok) {
+      const { feedback } = await response.json();
+      return Array.isArray(feedback) ? feedback : [];
+    }
+  } catch (error) {
+    console.error('Error fetching recent feedback:', error);
+  }
+  return [];
+};
 
   const assessFitnessTrajectory = (recentFeedback: any[]) => {
     if (!recentFeedback || recentFeedback.length === 0) return 'unknown';
@@ -584,22 +653,25 @@ useEffect(() => {
   }, [draggedSession, draggedFromDay, weekData.weeklySchedule, currentWeek, goalTime]);
 
   // AI ADJUSTMENT FUNCTIONS
-  const getAIAdjustment = async (sessionData: any): Promise<TrainingAdjustment> => {
-    const response = await fetch('/api/ai/auto-adjust', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        sessionData,
-        currentGoalTime: goalTime,
-        predictedTime: predictedTime,
-        currentWeek,
-        weekData: weekData.weeklySchedule
-      })
-    });
+ const getAIAdjustment = async (sessionData: any): Promise<TrainingAdjustment> => {
+  const response = await fetch('/api/ai/auto-adjust', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ 
+      sessionData,
+      currentGoalTime: goalTime,
+      predictedTime: predictedTime,
+      currentWeek,
+      weekData: weekData.weeklySchedule,
+      // NEW: Tell AI to be ambitious with goal updates
+      goalUpdatePreference: 'ambitious', // 'ambitious' | 'conservative' | 'adaptive'
+      allowFasterGoals: true
+    })
+  });
 
-    const result = await response.json();
-    return result.adjustment;
-  };
+  const result = await response.json();
+  return result.adjustment;
+};
 
   const applyAIAdjustments = (adjustment: TrainingAdjustment) => {
     if (adjustment.action === 'maintain') return;
@@ -658,6 +730,23 @@ useEffect(() => {
 
     if (adjustment.goalTimeUpdate && adjustment.goalTimeUpdate.confidence > 0.8) {
       setPredictedTime(adjustment.goalTimeUpdate.newGoalTime);
+        const currentGoalSeconds = timeToSeconds(goalTime);
+  const newGoalSeconds = timeToSeconds(adjustment.goalTimeUpdate.newGoalTime);
+
+  if (newGoalSeconds < currentGoalSeconds || adjustment.goalTimeUpdate.confidence > 0.9) {
+    setGoalTime(adjustment.goalTimeUpdate.newGoalTime);
+    setPredictedTime(adjustment.goalTimeUpdate.newGoalTime);
+    console.log(`🚀 AI updated goal time to: ${adjustment.goalTimeUpdate.newGoalTime} (${adjustment.goalTimeUpdate.improvement > 0 ? 'FASTER' : 'safer'} target)`);
+    
+    // Show goal update notification
+    showNotification(
+      `🎯 AI updated your goal to ${formatGoalTimeForDisplay(adjustment.goalTimeUpdate.newGoalTime)}! You're performing better than expected.`,
+      'success'
+    );
+  } else {
+    setPredictedTime(adjustment.goalTimeUpdate.newGoalTime);
+    console.log(`🤖 AI updated predicted time to: ${adjustment.goalTimeUpdate.newGoalTime}`);
+  }
       console.log(`🤖 AI updated predicted time to: ${adjustment.goalTimeUpdate.newGoalTime}`);
     }
 
@@ -726,11 +815,14 @@ useEffect(() => {
         comments: feedback.comments
       };
       
-      const feedbackResponse = await fetch('/api/feedback', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(feedbackData)
-      });
+const feedbackResponse = await fetch('/api/feedback', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    ...feedbackData,
+    userId: userId  // Add userId to the feedback data
+  })
+});
 
       if (!feedbackResponse.ok) {
         const errorData = await feedbackResponse.json();
@@ -739,7 +831,7 @@ useEffect(() => {
 
       const result = await feedbackResponse.json();
       console.log('✅ Feedback saved to database:', result);
-
+console.log('🎯 TrainingCalendar current userId:', userId);
       // Show success message
       const successPanel = document.createElement('div');
       successPanel.className = 'fixed top-4 right-4 z-50 bg-green-900 border border-green-400 rounded-lg p-4 shadow-lg';
@@ -977,13 +1069,13 @@ useEffect(() => {
                 <h2 className="text-xl font-bold text-white">Enhanced AI Training Analysis</h2>
                 <div className="flex items-center gap-4 text-sm">
                   <span className="text-gray-400">Confidence: {Math.round(result.confidence * 100)}%</span>
-                  <span className={`font-medium ${
-                    result.goalImpact === 'helps_sub2' ? 'text-green-400' :
-                    result.goalImpact === 'hurts_sub2' ? 'text-red-400' : 'text-yellow-400'
-                  }`}>
-                    Sub-2:00 Impact: {result.goalImpact === 'helps_sub2' ? 'Positive' :
-                                     result.goalImpact === 'hurts_sub2' ? 'Negative' : 'Neutral'}
-                  </span>
+<span className={`font-medium ${
+  result.goalImpact === 'helps_sub2' ? 'text-green-400' :
+  result.goalImpact === 'hurts_sub2' ? 'text-red-400' : 'text-yellow-400'
+}`}>
+  {formatGoalTimeForDisplay(goalTime)} Impact: {result.goalImpact === 'helps_sub2' ? 'Positive' :
+                                               result.goalImpact === 'hurts_sub2' ? 'Negative' : 'Neutral'}
+</span>
                 </div>
               </div>
               <button onClick={() => setShowEnhancedAiModal(false)} className="text-gray-400 hover:text-white text-xl">&times;</button>
@@ -1153,11 +1245,11 @@ useEffect(() => {
             </div>
             
             {/* Sub-2:00 Focus Note */}
-            <div className="mt-4 p-3 bg-green-900/20 border border-green-500/30 rounded-lg text-center">
-              <p className="text-sm text-green-200">
-                🎯 <strong>Goal Focus:</strong> All recommendations prioritize your sub-2:00 half marathon goal on October 12, 2025
-              </p>
-            </div>
+<div className="mt-4 p-3 bg-green-900/20 border border-green-500/30 rounded-lg text-center">
+  <p className="text-sm text-green-200">
+    🎯 <strong>Goal Focus:</strong> All recommendations prioritize your {formatGoalTimeForDisplay(goalTime)} half marathon goal on October 12, 2025
+  </p>
+</div>
           </div>
         </div>
       </div>
@@ -1221,15 +1313,15 @@ useEffect(() => {
               </ul>
             </div>
             
-            {aiAdjustment.goalTimeUpdate && (
-              <div className="bg-cyan-900 bg-opacity-30 p-2 rounded text-xs">
-                <strong>Goal Updated:</strong> {aiAdjustment.goalTimeUpdate.newGoalTime}
-                <br />
-                <span className="text-cyan-300">
-                  {aiAdjustment.goalTimeUpdate.improvement > 0 ? 'Faster' : 'Safer'} target
-                </span>
-              </div>
-            )}
+{aiAdjustment.goalTimeUpdate && (
+  <div className="bg-cyan-900 bg-opacity-30 p-2 rounded text-xs">
+    <strong>Goal Updated:</strong> {formatGoalTimeForDisplay(aiAdjustment.goalTimeUpdate.newGoalTime)}
+    <br />
+    <span className="text-cyan-300">
+      {aiAdjustment.goalTimeUpdate.improvement > 0 ? '🚀 FASTER target - you\'re improving!' : '🛡️ Safer target'}
+    </span>
+  </div>
+)}
             
             <div className="text-xs text-gray-400 italic">
               {aiAdjustment.reasoning}
@@ -1364,17 +1456,13 @@ useEffect(() => {
               </CardContent>
             </Card>
           </div>
-// Add this right before your calendar grid
-<div className="text-white bg-red-500 p-2">
-  TrainingCalendar Debug: Width {typeof window !== 'undefined' ? window.innerWidth : 'SSR'}, isMobile: {isMobile.toString()}
-</div>
+
           {/* Calendar Grid */}
 <div style={{
   display: 'grid',
   gridTemplateColumns: isMobile ? '1fr' : 'repeat(7, 1fr)',
   gap: '16px',
-  minHeight: isMobile ? 'auto' : '480px',
-    border: isMobile ? '3px solid green' : '3px solid red' 
+  minHeight: isMobile ? 'auto' : '480px' 
 }}>
             {days.map((day) => (
               <div
@@ -1674,16 +1762,44 @@ useEffect(() => {
       <EnhancedAIModal />
 
       {/* Feedback Form */}
-      {showFeedback && selectedSession && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div style={{ 
-            backgroundColor: 'var(--surface-color)', 
-            borderRadius: '8px', 
-            padding: '24px', 
-            maxWidth: '500px', 
-            width: '100%',
-            border: '1px solid #3a3a4a'
-          }}>
+{showFeedback && selectedSession && (
+  <div 
+    className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+    style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '16px'
+    }}
+    onClick={(e) => {
+      if (e.target === e.currentTarget) {
+        setShowFeedback(false);
+      }
+    }}
+  >
+    <div 
+      style={{ 
+        backgroundColor: 'var(--surface-color)', 
+        borderRadius: '8px', 
+        padding: '24px', 
+        maxWidth: '500px', 
+        width: '100%',
+        border: '1px solid #3a3a4a',
+        maxHeight: '90vh',
+        overflowY: 'auto',
+        position: 'relative',
+        // Ensure modal stays in viewport center
+        margin: 'auto'
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+
+
             <h2 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '24px' }}>
               Session Feedback - AI Auto-Adjustment
             </h2>
@@ -1741,40 +1857,72 @@ useEffect(() => {
   gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', 
   gap: '16px' 
 }}>
+<div>
+  <label style={{ display: 'block', fontSize: '12px', color: '#9ca3af', marginBottom: '8px' }}>
+    Difficulty (1-10): <span className="text-cyan-400 font-bold">{difficultyValue}</span>
+  </label>
+  <div 
+    style={{ 
+      touchAction: 'none',  // Prevent scroll on touch
+      userSelect: 'none'    // Prevent text selection
+    }}
+    onTouchStart={(e) => e.stopPropagation()}
+    onTouchMove={(e) => e.stopPropagation()}
+  >
+    <input
+      type="range"
+      min="1"
+      max="10"
+      value={difficultyValue}
+      onChange={(e) => setDifficultyValue(parseInt(e.target.value))}
+      onTouchStart={(e) => e.stopPropagation()}
+      onTouchMove={(e) => e.stopPropagation()}
+      className="w-full"
+      style={{
+        touchAction: 'none',
+        WebkitAppearance: 'none',
+        MozAppearance: 'none'
+      }}
+    />
+  </div>
+  <div className="flex justify-between text-xs text-gray-400 mt-1">
+    <span>Very Easy</span>
+    <span>Very Hard</span>
+  </div>
+</div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '12px', color: '#9ca3af', marginBottom: '8px' }}>
-                    Difficulty (1-10): <span className="text-cyan-400 font-bold">{difficultyValue}</span>
-                  </label>
-                  <input
-                    type="range"
-                    min="1"
-                    max="10"
-                    value={difficultyValue}
-                    onChange={(e) => setDifficultyValue(parseInt(e.target.value))}
-                    className="w-full"
-                  />
-                  <div className="flex justify-between text-xs text-gray-400 mt-1">
-                    <span>Very Easy</span>
-                    <span>Very Hard</span>
-                  </div>
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', color: '#9ca3af', marginBottom: '8px' }}>
-                    RPE (1-10): <span className="text-cyan-400 font-bold">{rpeValue}</span>
-                  </label>
-                  <input
-                    type="range"
-                    min="1"
-                    max="10"
-                    value={rpeValue}
-                    onChange={(e) => setRpeValue(parseInt(e.target.value))}
-                    className="w-full"
-                  />
-                  <div className="flex justify-between text-xs text-gray-400 mt-1">
-                    <span>Easy</span>
-                    <span>Maximal</span>
-                  </div>
-                </div>
+  <label style={{ display: 'block', fontSize: '12px', color: '#9ca3af', marginBottom: '8px' }}>
+    RPE (1-10): <span className="text-cyan-400 font-bold">{rpeValue}</span>
+  </label>
+  <div 
+    style={{ 
+      touchAction: 'none',
+      userSelect: 'none' 
+    }}
+    onTouchStart={(e) => e.stopPropagation()}
+    onTouchMove={(e) => e.stopPropagation()}
+  >
+    <input
+      type="range"
+      min="1"
+      max="10"
+      value={rpeValue}
+      onChange={(e) => setRpeValue(parseInt(e.target.value))}
+      onTouchStart={(e) => e.stopPropagation()}
+      onTouchMove={(e) => e.stopPropagation()}
+      className="w-full"
+      style={{
+        touchAction: 'none',
+        WebkitAppearance: 'none',
+        MozAppearance: 'none'
+      }}
+    />
+  </div>
+  <div className="flex justify-between text-xs text-gray-400 mt-1">
+    <span>Easy</span>
+    <span>Maximal</span>
+  </div>
+</div>
               </div>
 
               {(difficultyValue >= 8 || rpeValue >= 8) && (
