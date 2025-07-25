@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { Brain, Clock, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
-import useSWR from 'swr';
 
 interface PlanGenerationStatusProps {
   userId: string;
@@ -11,82 +10,64 @@ const PlanGenerationStatus = ({ userId, onPlanReady }: PlanGenerationStatusProps
   const [status, setStatus] = useState<'generating' | 'complete' | 'error' | 'checking'>('checking');
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState('Checking plan status...');
-  const [retryCount, setRetryCount] = useState(0);
+  const [hasTriggeredGeneration, setHasTriggeredGeneration] = useState(false);
 
-  // ✅ USE SWR for polling - eliminates duplicate requests!
-  const { data, error, mutate } = useSWR(
-    `/api/training-plan?userId=${userId}`,
-    {
-      refreshInterval: (data) => {
-        // Stop polling when complete or error
-        if (data?.planGenerated || !data?.onboardingComplete) {
-          return 0; // Stop polling
-        }
-        return 3000; // Poll every 3 seconds
-      },
-      revalidateOnFocus: false,
-      dedupingInterval: 5000, // Dedupe for 5 seconds (longer than polling interval)
-    }
-  );
-
-  // Handle SWR data changes and trigger generation if needed
-  useEffect(() => {
-    if (error) {
-      console.error('❌ SWR Error checking plan status:', error);
-      setStatus('error');
-      setMessage('Error checking plan status. Click retry to try again.');
-      return;
-    }
-
-    if (!data) {
-      setStatus('checking');
-      setMessage('Checking plan status...');
-      return;
-    }
-
-    console.log(`📊 SWR Plan status for ${userId}:`, {
-      planGenerated: data.planGenerated,
-      onboardingComplete: data.onboardingComplete,
-      sessionsCount: data.sessions?.length || 0
-    });
-
-    if (data.planGenerated && data.sessions?.length > 0) {
-      console.log('✅ Plan generation complete!');
-      setStatus('complete');
-      setMessage('Training plan ready! Loading your dashboard...');
-      setProgress(100);
+  // Simple check plan status function
+  const checkPlanStatus = async () => {
+    try {
+      console.log(`🔍 Checking plan status for user: ${userId}`);
       
-      // Delay to show success state
-      setTimeout(() => {
-        onPlanReady();
-      }, 2000);
-    } else if (data.onboardingComplete && !data.planGenerated) {
-      // ✅ TRIGGER PLAN GENERATION if onboarding complete but no plan
-      console.log('🚀 Onboarding complete, need to generate plan...');
+      const response = await fetch(`/api/training-plan?userId=${userId}`);
+      const data = await response.json();
       
-      if (status !== 'generating') {
-        setStatus('generating');
-        setMessage('Starting AI plan generation...');
-        setProgress(20);
+      console.log(`📊 Plan status:`, {
+        planGenerated: data.planGenerated,
+        onboardingComplete: data.onboardingComplete,
+        sessionsCount: data.sessions?.length || 0
+      });
+
+      if (data.planGenerated && data.sessions?.length > 0) {
+        console.log('✅ Plan generation complete!');
+        setStatus('complete');
+        setMessage('Training plan ready! Loading your dashboard...');
+        setProgress(100);
         
-        // Trigger plan generation directly from frontend
-        triggerPlanGeneration();
+        setTimeout(() => {
+          onPlanReady();
+        }, 2000);
+      } else if (data.onboardingComplete && !data.planGenerated) {
+        // Only trigger generation once
+        if (!hasTriggeredGeneration) {
+          console.log('🚀 Need to generate plan - triggering once');
+          setHasTriggeredGeneration(true);
+          triggerPlanGeneration();
+        } else {
+          console.log('🤖 Plan generation in progress...');
+          setStatus('generating');
+          setMessage('AI is creating your personalized training plan...');
+          setProgress(prev => Math.min(prev + 15, 90));
+        }
       } else {
-        // Already generating, just update progress
-        setMessage('AI is analyzing your goals and creating your personalized training plan...');
-        setProgress(prev => Math.min(prev + 10, 90));
+        console.log('❌ Onboarding not completed');
+        setStatus('error');
+        setMessage('Please complete the onboarding process first.');
       }
-    } else if (!data.onboardingComplete) {
-      console.log('❌ Onboarding not completed');
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('❌ Error checking plan status:', errorMessage);
       setStatus('error');
-      setMessage('Onboarding not completed. Please complete the setup process.');
+      setMessage('Error checking plan status. Please try again.');
     }
-  }, [data, error, userId, onPlanReady, status]);
+  };
 
-  // Function to trigger plan generation
+  // Trigger plan generation - called only once
   const triggerPlanGeneration = async () => {
     try {
-      console.log('🤖 Calling /api/generate-plan...');
+      console.log('🤖 Starting plan generation...');
+      setStatus('generating');
+      setMessage('Starting AI plan generation...');
+      setProgress(30);
+      
       const response = await fetch('/api/generate-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -94,58 +75,54 @@ const PlanGenerationStatus = ({ userId, onPlanReady }: PlanGenerationStatusProps
       });
 
       if (response.ok) {
-        console.log('✅ Plan generation triggered successfully');
-        setMessage('AI is analyzing your goals and creating your personalized training plan...');
-        setProgress(40);
-        // SWR will continue polling automatically
+        console.log('✅ Plan generation started successfully');
+        setMessage('AI is analyzing your goals and preferences...');
+        setProgress(50);
       } else {
-        console.error('❌ Failed to trigger plan generation:', response.status);
+        console.error('❌ Failed to start plan generation:', response.status);
         setStatus('error');
         setMessage('Failed to start plan generation. Please try again.');
+        setHasTriggeredGeneration(false); // Reset to allow retry
       }
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error('❌ Error triggering plan generation:', errorMessage);
+      console.error('❌ Error starting plan generation:', errorMessage);
       setStatus('error');
-      setMessage('Network error starting plan generation. Please check your connection.');
+      setMessage('Network error. Please check your connection.');
+      setHasTriggeredGeneration(false); // Reset to allow retry
     }
   };
 
-  // Manual retry function
-  const handleRetry = async () => {
-    console.log(`🔄 Manual retry attempt ${retryCount + 1}`);
-    setRetryCount(prev => prev + 1);
-    setStatus('checking');
-    setMessage('Retrying plan generation...');
-    setProgress(10);
-    
-    try {
-      // First try to trigger plan generation again
-      const response = await fetch('/api/generate-plan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          userId,
-          retryGeneration: true 
-        })
-      });
+  // Simple polling every 5 seconds
+  useEffect(() => {
+    if (!userId) return;
 
-      if (response.ok) {
-        setStatus('generating');
-        setMessage('Plan generation restarted. Please wait...');
-        setProgress(30);
-        // Trigger SWR to refetch
-        mutate();
-      } else {
-        setStatus('error');
-        setMessage('Failed to restart plan generation. Please contact support.');
+    console.log(`🚀 Starting simple polling for user: ${userId}`);
+    
+    // Initial check
+    checkPlanStatus();
+    
+    // Poll every 5 seconds
+    const interval = setInterval(() => {
+      if (status !== 'complete') {
+        checkPlanStatus();
       }
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error('❌ Retry error:', errorMessage);
-      setStatus('error');
-      setMessage('Network error. Please check your connection and try again.');
-    }
+    }, 5000);
+
+    return () => {
+      console.log('🧹 Cleanup polling interval');
+      clearInterval(interval);
+    };
+  }, [userId]);
+
+  // Manual retry
+  const handleRetry = () => {
+    console.log('🔄 Manual retry requested');
+    setHasTriggeredGeneration(false);
+    setStatus('checking');
+    setMessage('Retrying...');
+    setProgress(0);
+    checkPlanStatus();
   };
 
   const getStatusIcon = () => {
@@ -177,24 +154,20 @@ const PlanGenerationStatus = ({ userId, onPlanReady }: PlanGenerationStatusProps
     <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
       <div className={`max-w-md w-full p-8 rounded-lg border ${getStatusColor()}`}>
         
-        {/* Status Icon */}
         <div className="flex justify-center mb-6">
           {getStatusIcon()}
         </div>
         
-        {/* Main Heading */}
         <h1 className="text-2xl font-bold text-white text-center mb-4">
           {status === 'complete' ? 'Plan Ready!' : 
            status === 'error' ? 'Generation Error' :
            'Generating Your Training Plan'}
         </h1>
         
-        {/* Status Message */}
         <p className="text-gray-300 text-center mb-6 leading-relaxed">
           {message}
         </p>
         
-        {/* Progress Bar (for generating state) */}
         {status === 'generating' && (
           <div className="mb-6">
             <div className="w-full bg-gray-700 rounded-full h-2">
@@ -207,46 +180,19 @@ const PlanGenerationStatus = ({ userId, onPlanReady }: PlanGenerationStatusProps
           </div>
         )}
         
-        {/* Generation Details */}
-        {status === 'generating' && (
-          <div className="mb-6 p-4 bg-gray-800/50 rounded-lg">
-            <h3 className="text-sm font-semibold text-cyan-400 mb-2">AI is working on:</h3>
-            <ul className="text-xs text-gray-300 space-y-1">
-              <li className="flex items-center gap-2">
-                <div className="w-1 h-1 bg-cyan-400 rounded-full" />
-                Analyzing your race goals and personal bests
-              </li>
-              <li className="flex items-center gap-2">
-                <div className="w-1 h-1 bg-cyan-400 rounded-full" />
-                Creating optimal pace zones for training
-              </li>
-              <li className="flex items-center gap-2">
-                <div className="w-1 h-1 bg-cyan-400 rounded-full" />
-                Scheduling around your gym and club sessions
-              </li>
-              <li className="flex items-center gap-2">
-                <div className="w-1 h-1 bg-cyan-400 rounded-full" />
-                Generating 12 weeks of personalized sessions
-              </li>
-            </ul>
-          </div>
-        )}
-        
-        {/* Success State */}
         {status === 'complete' && (
           <div className="mb-6 p-4 bg-green-900/20 border border-green-500/30 rounded-lg text-center">
             <p className="text-green-300 text-sm">
-              🎉 Your personalized training plan is ready! Redirecting to dashboard...
+              🎉 Your training plan is ready! Redirecting...
             </p>
           </div>
         )}
         
-        {/* Error State with Retry */}
         {status === 'error' && (
           <div className="space-y-4">
             <div className="p-4 bg-red-900/20 border border-red-500/30 rounded-lg">
               <p className="text-red-300 text-sm text-center">
-                Plan generation encountered an issue. This sometimes happens during high usage.
+                Something went wrong. Please try again.
               </p>
             </div>
             
@@ -255,29 +201,8 @@ const PlanGenerationStatus = ({ userId, onPlanReady }: PlanGenerationStatusProps
               className="w-full bg-red-600 hover:bg-red-700 text-white font-medium py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
             >
               <RefreshCw className="w-4 h-4" />
-              Retry Generation {retryCount > 0 && `(Attempt ${retryCount + 1})`}
+              Try Again
             </button>
-            
-            {retryCount >= 2 && (
-              <div className="text-center">
-                <p className="text-gray-400 text-xs mb-2">Still having issues?</p>
-                <button 
-                  onClick={() => window.location.href = '/dashboard'}
-                  className="text-cyan-400 hover:text-cyan-300 text-sm underline"
-                >
-                  Continue with default plan →
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-        
-        {/* Tips while waiting */}
-        {(status === 'generating' || status === 'checking') && (
-          <div className="mt-6 pt-4 border-t border-gray-700">
-            <p className="text-xs text-gray-400 text-center">
-              💡 Tip: This usually takes 30-60 seconds. We're creating a plan that adapts to your specific goals and schedule.
-            </p>
           </div>
         )}
         
