@@ -45,11 +45,12 @@ const PlanGenerationStatus = ({ userId, onPlanReady }: PlanGenerationStatusProps
           // Generation has been triggered, show progress
           console.log('🤖 Plan generation in progress... waiting for completion');
           setStatus('generating');
-          setMessage('AI is creating your personalized training plan... This may take up to 60 seconds.');
+          setMessage('AI is creating your personalized training plan... This can take up to 2 minutes for deep analysis.');
           
-          // Don't set to error - just keep showing progress
-          const currentProgress = Math.min(progress + 10, 95);
-          setProgress(currentProgress);
+          // ✅ IMPROVED: More realistic progress tracking
+          const timeSinceGeneration = Date.now() - (window as any).generationStartTime || 0;
+          const estimatedProgress = Math.min(30 + Math.floor(timeSinceGeneration / 2000), 95); // 2% per 2 seconds
+          setProgress(estimatedProgress);
         }
       } else {
         console.log('❌ Onboarding not completed');
@@ -106,6 +107,9 @@ const PlanGenerationStatus = ({ userId, onPlanReady }: PlanGenerationStatusProps
         console.log('✅ Plan generation started successfully');
         setMessage('AI is analyzing your goals and preferences...');
         setProgress(50);
+        
+        // ✅ TRACK: Store generation start time for progress calculation
+        (window as any).generationStartTime = Date.now();
       } else {
         const errorText = await response.text();
         console.error('❌ Failed to start plan generation:', response.status, errorText);
@@ -122,27 +126,27 @@ const PlanGenerationStatus = ({ userId, onPlanReady }: PlanGenerationStatusProps
     }
   };
 
-  // Simple polling every 5 seconds
+  // Simple polling every 10 seconds (longer for AI generation)
   useEffect(() => {
     if (!userId) return;
 
-    console.log(`🚀 Starting simple polling for user: ${userId}`);
+    console.log(`🚀 Starting polling for user: ${userId}`);
     
     // Initial check
     checkPlanStatus();
     
-    // Poll every 5 seconds
+    // Poll every 10 seconds (AI needs more time)
     const interval = setInterval(() => {
       if (status !== 'complete') {
         checkPlanStatus();
       }
-    }, 5000);
+    }, 10000); // ✅ INCREASED from 5000 to 10000ms
 
     return () => {
       console.log('🧹 Cleanup polling interval');
       clearInterval(interval);
     };
-  }, [userId]);
+  }, [userId]); // ✅ Removed status dependency to prevent restarts
 
   // Manual retry
   const handleRetry = () => {
