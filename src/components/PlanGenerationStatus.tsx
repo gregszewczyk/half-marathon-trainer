@@ -52,28 +52,46 @@ const PlanGenerationStatus = ({ userId, onPlanReady }: PlanGenerationStatusProps
     }
   };
 
-  // ✅ FIXED: Auto-check status every 3 seconds - NO status dependency
+  // ✅ FIXED: Auto-check status every 3 seconds with proper cleanup
   useEffect(() => {
+    let isMounted = true;
+    let interval: NodeJS.Timeout | null = null;
+    
     console.log(`🚀 Starting plan status monitoring for user: ${userId}`);
     
     // Initial check
-    checkPlanStatus();
+    if (isMounted) {
+      checkPlanStatus();
+    }
     
     // Set up interval that checks current status via ref
-    const interval = setInterval(() => {
+    interval = setInterval(() => {
+      if (!isMounted) {
+        console.log('🛑 Component unmounted, stopping checks');
+        return;
+      }
+      
       const currentStatus = statusRef.current;
       console.log(`⏰ Interval check - current status: ${currentStatus}`);
       
       if (currentStatus === 'generating' || currentStatus === 'checking') {
         checkPlanStatus();
-      } else {
-        console.log(`🛑 Stopping interval - status is: ${currentStatus}`);
+      } else if (currentStatus === 'complete' || currentStatus === 'error') {
+        console.log(`🛑 Stopping interval - final status: ${currentStatus}`);
+        if (interval) {
+          clearInterval(interval);
+          interval = null;
+        }
       }
     }, 3000);
 
     return () => {
       console.log('🧹 Cleaning up plan status interval');
-      clearInterval(interval);
+      isMounted = false;
+      if (interval) {
+        clearInterval(interval);
+        interval = null;
+      }
     };
   }, [userId]); // ✅ ONLY userId dependency - no status!
 
