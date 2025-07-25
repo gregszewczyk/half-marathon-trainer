@@ -204,23 +204,36 @@ useEffect(() => {
         if (data.sessions && Array.isArray(data.sessions) && data.sessions.length > 0) {
           console.log(`✅ Found ${data.sessions.length} AI-generated sessions`);
           
-          // Convert database sessions to calendar format
-          const convertedSessions = data.sessions.map((dbSession: any) => ({
-            id: `ai-${dbSession.id}`,
-            type: 'running' as const,
-            subType: dbSession.sessionType || 'easy',
-            distance: dbSession.distance || 5,
-            pace: dbSession.pace || '6:00',
-            duration: `${Math.round((dbSession.distance || 5) * 6)}min`,
-            time: dbSession.timeOfDay || '17:00',
-            week: dbSession.week,
-            day: dbSession.dayOfWeek,
-            aiModified: true,
-            warmup: dbSession.warmup || '10 min easy jog + dynamic stretching',
-            mainSet: dbSession.aiReason || `${dbSession.distance}km at prescribed pace`,
-            cooldown: dbSession.cooldown || '5 min walk + stretching',
-            targetRPE: getTargetRPE(dbSession.sessionType || 'easy')
-          }));
+          // ✅ FIXED: Convert database sessions to calendar format with proper TypeScript
+          const convertedSessions: Session[] = data.sessions.map((dbSession: any): Session => {
+            // ✅ Handle unknown types properly
+            const sessionType = typeof dbSession.sessionType === 'string' ? dbSession.sessionType : 'easy';
+            const distance = typeof dbSession.distance === 'number' ? dbSession.distance : 5;
+            const pace = typeof dbSession.pace === 'string' ? dbSession.pace : '6:00';
+            const week = typeof dbSession.week === 'number' ? dbSession.week : 1;
+            const dayOfWeek = typeof dbSession.dayOfWeek === 'string' ? dbSession.dayOfWeek : 'monday';
+            const timeOfDay = typeof dbSession.timeOfDay === 'string' ? dbSession.timeOfDay : '17:00';
+            const warmup = typeof dbSession.warmup === 'string' ? dbSession.warmup : '10 min easy jog + dynamic stretching';
+            const aiReason = typeof dbSession.aiReason === 'string' ? dbSession.aiReason : `${distance}km at prescribed pace`;
+            const cooldown = typeof dbSession.cooldown === 'string' ? dbSession.cooldown : '5 min walk + stretching';
+            
+            return {
+              id: `ai-${dbSession.id || 'unknown'}`,
+              type: 'running',
+              subType: sessionType as 'easy' | 'tempo' | 'intervals' | 'long',
+              distance: distance,
+              pace: pace,
+              duration: `${Math.round(distance * 6)}min`,
+              time: timeOfDay,
+              week: week,
+              day: dayOfWeek,
+              aiModified: true,
+              warmup: warmup,
+              mainSet: aiReason,
+              cooldown: cooldown,
+              targetRPE: getTargetRPE(sessionType)
+            };
+          });
           
           setAiGeneratedSessions(convertedSessions);
           setUseAiSessions(true);
@@ -546,7 +559,7 @@ const getWeekData = (weekNum: number): WeekData => {
     console.log(`🤖 Non-admin user - using AI-generated sessions for week ${weekNum}`);
     
     // ✅ FIXED: Filter AI sessions for this specific week with proper null checks
-    const weekSessions = aiGeneratedSessions.filter((session: Session): boolean => {
+ const weekSessions = aiGeneratedSessions.filter((session: Session): boolean => {
       return typeof session.week === 'number' && session.week === weekNum;
     });
     
@@ -562,18 +575,62 @@ const getWeekData = (weekNum: number): WeekData => {
         Sunday: []
       };
 
-      weekSessions.forEach((session: Session) => {
+weekSessions.forEach((session: Session) => {
         // ✅ FIXED: Proper null checking for day property
         if (typeof session.day === 'string' && session.day.length > 0) {
-          const dayName = session.day.charAt(0).toUpperCase() + session.day.slice(1).toLowerCase();
-          if (aiSchedule[dayName]) {
-            aiSchedule[dayName].push(session);
+          // ✅ FIXED: Handle all day name variations
+          let dayName = '';
+          const dayLower = session.day.toLowerCase();
+          
+          // Map database day names to calendar day names
+          switch (dayLower) {
+            case 'monday':
+            case 'mon':
+              dayName = 'Monday';
+              break;
+            case 'tuesday':
+            case 'tue':
+              dayName = 'Tuesday';
+              break;
+            case 'wednesday':
+            case 'wed':
+              dayName = 'Wednesday';
+              break;
+            case 'thursday':
+            case 'thu':
+              dayName = 'Thursday';
+              break;
+            case 'friday':
+            case 'fri':
+              dayName = 'Friday';
+              break;
+            case 'saturday':
+            case 'sat':
+              dayName = 'Saturday';
+              break;
+            case 'sunday':
+            case 'sun':
+              dayName = 'Sunday';
+              break;
+            default:
+              console.warn(`⚠️ Unknown day: ${session.day}, defaulting to Monday`);
+              dayName = 'Monday';
           }
+          
+          console.log(`📅 Placing AI session: ${session.id} on ${dayName} (from DB: ${session.day})`);
+          
+          if (!aiSchedule[dayName]) {
+            aiSchedule[dayName] = [];
+          }
+          (aiSchedule[dayName] ?? []).push(session);
+        } else {
+          console.warn(`⚠️ Session ${session.id} has invalid day: ${session.day}`);
         }
       });
 
+
       // ✅ FIXED: Add rest days for empty days with proper TypeScript
-      Object.keys(aiSchedule).forEach((day: string) => {
+ Object.keys(aiSchedule).forEach((day: string) => {
         const daySchedule = aiSchedule[day];
         if (Array.isArray(daySchedule) && daySchedule.length === 0) {
           aiSchedule[day] = [{ 
@@ -585,6 +642,7 @@ const getWeekData = (weekNum: number): WeekData => {
       });
 
       console.log(`✅ Using ${weekSessions.length} AI sessions for week ${weekNum}`);
+      console.log(`📊 AI Schedule for week ${weekNum}:`, Object.keys(aiSchedule).map(day => `${day}: ${(aiSchedule[day] ?? []).length} sessions`));
       
       return {
         weekNumber: weekNum,
