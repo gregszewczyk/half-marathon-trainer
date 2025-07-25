@@ -36,12 +36,13 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // ✅ FIXED: Check if sessions actually exist when plan is marked as generated
     if (!userProfile.planGenerated || !userProfile.onboardingComplete) {
       return NextResponse.json({
         planGenerated: false,
         onboardingComplete: userProfile.onboardingComplete || false,
         sessions: [],
-        userProfile: userProfile  // ✅ FIXED: Return profile data for plan generation
+        userProfile: userProfile
       });
     }
 
@@ -58,6 +59,24 @@ export async function GET(request: NextRequest) {
         { dayOfWeek: 'asc' }
       ]
     });
+
+    // ✅ FIXED: If plan is marked generated but no sessions exist, it actually failed
+    if (userProfile.planGenerated && sessions.length === 0) {
+      console.log(`⚠️ Plan marked as generated but no sessions found for user ${userId} - resetting status`);
+      
+      // Reset the planGenerated flag
+      await prisma.userProfile.update({
+        where: { userId },
+        data: { planGenerated: false }
+      });
+      
+      return NextResponse.json({
+        planGenerated: false,
+        onboardingComplete: true,
+        sessions: [],
+        userProfile: userProfile
+      });
+    }
 
     console.log(`✅ Found ${sessions.length} sessions for user ${userId}`);
 
