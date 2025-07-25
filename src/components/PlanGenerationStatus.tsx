@@ -68,10 +68,26 @@ const PlanGenerationStatus = ({ userId, onPlanReady }: PlanGenerationStatusProps
       setMessage('Starting AI plan generation...');
       setProgress(30);
       
+      // ✅ Get onboarding data from user profile first
+      const profileResponse = await fetch(`/api/training-plan?userId=${userId}`);
+      const profileData = await profileResponse.json();
+      
+      if (!profileData.userProfile) {
+        console.error('❌ No user profile found');
+        setStatus('error');
+        setMessage('User profile not found. Please complete onboarding first.');
+        setHasTriggeredGeneration(false);
+        return;
+      }
+      
+      // ✅ Send correct data format that API expects
       const response = await fetch('/api/generate-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId })
+        body: JSON.stringify({ 
+          userId,
+          onboardingData: profileData.userProfile // ✅ Include required onboardingData
+        })
       });
 
       if (response.ok) {
@@ -79,7 +95,8 @@ const PlanGenerationStatus = ({ userId, onPlanReady }: PlanGenerationStatusProps
         setMessage('AI is analyzing your goals and preferences...');
         setProgress(50);
       } else {
-        console.error('❌ Failed to start plan generation:', response.status);
+        const errorText = await response.text();
+        console.error('❌ Failed to start plan generation:', response.status, errorText);
         setStatus('error');
         setMessage('Failed to start plan generation. Please try again.');
         setHasTriggeredGeneration(false); // Reset to allow retry
