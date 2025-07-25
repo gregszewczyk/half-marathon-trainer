@@ -1,3 +1,6 @@
+// 🚀 FIXED: src/app/api/auth/signup/route.ts
+// Updated response format to match frontend expectations
+
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
@@ -49,20 +52,24 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ New user created:', user.email);
 
+    // ✅ FIXED: Return format that matches frontend expectations
     return NextResponse.json({
       success: true,
-      userId: user.id,
-      name: user.name,
-      email: user.email
+      user: {                    // ✅ Nested under 'user' object
+        id: user.id,
+        name: user.name,
+        email: user.email
+      }
     });
 
-  } catch (error) {
-    console.error('❌ Signup error:', error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    console.error('❌ Signup error:', errorMessage)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
-    );
+    )
   } finally {
-    await prisma.$disconnect();
+    await prisma.$disconnect()
   }
 }

@@ -1,8 +1,11 @@
-// 🎨 RESTORED: src/app/page.tsx - Your Beautiful Marketing Homepage
+// 🎨 FIXED: src/app/page.tsx - Landing page with proper authentication detection
+'use client'
+
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import Link from 'next/link'
+import { useState, useEffect } from 'react'
 import { 
   PlayIcon, 
   ChartBarIcon, 
@@ -13,10 +16,26 @@ import {
 } from '@heroicons/react/24/outline'
 
 export default function HomePage() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+
+  // Check authentication state
+  useEffect(() => {
+    const checkAuth = () => {
+      const storedUserId = localStorage.getItem('userId')
+      setIsAuthenticated(!!storedUserId)
+    }
+    
+    checkAuth()
+    
+    // Listen for storage changes (in case user logs in/out in another tab)
+    window.addEventListener('storage', checkAuth)
+    
+    return () => window.removeEventListener('storage', checkAuth)
+  }, [])
+
   const raceDate = new Date('2025-10-12')
   const today = new Date()
   const daysUntilRace = Math.ceil((raceDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-  const trainingStarted = new Date() >= new Date('2025-07-21')
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -47,9 +66,9 @@ export default function HomePage() {
           </Card>
         </div>
 
-        {/* CTA Buttons */}
+        {/* CTA Buttons - Fixed to check authentication instead of date */}
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          {trainingStarted ? (
+          {isAuthenticated ? (
             <>
               <Link href="/dashboard">
                 <Button size="lg" className="w-full sm:w-auto">
@@ -66,15 +85,17 @@ export default function HomePage() {
             </>
           ) : (
             <>
-              <Link href="/dashboard">
+              <Link href="/auth/login">
                 <Button className="bg-[#00d4ff] text-black hover:bg-[#00d4ff]/80 text-lg px-8 py-3">
                   Start Training
                 </Button>
               </Link>
-              <Button variant="outline" size="lg" className="w-full sm:w-auto">
-                <ClockIcon className="h-5 w-5 mr-2" />
-                Training Starts July 21st
-              </Button>
+              <Link href="/auth/signup">
+                <Button variant="outline" size="lg" className="w-full sm:w-auto">
+                  <ClockIcon className="h-5 w-5 mr-2" />
+                  Create Account
+                </Button>
+              </Link>
             </>
           )}
         </div>

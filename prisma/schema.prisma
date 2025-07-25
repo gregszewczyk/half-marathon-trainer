@@ -1,5 +1,5 @@
-// 🔧 FIXED: src/prisma/schema.prisma
-// This fixes the relationship errors and maintains your existing data
+// 🚀 ENHANCED: src/prisma/schema.prisma
+// Added GeneratedSession table for AI-powered custom plan generation
 
 generator client {
   provider = "prisma-client-js"
@@ -10,7 +10,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ✅ FIXED: User model with proper relationships
+// ✅ User model (unchanged - preserves existing data)
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -19,89 +19,182 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // 🔧 FIXED: Proper relationship references
-  profile         UserProfile?     @relation("UserProfile")
-  trainingPlans   TrainingPlan[]   @relation("UserTrainingPlans")
+  // Proper relationship references
+  profile         UserProfile?      @relation("UserProfile")
+  trainingPlans   TrainingPlan[]    @relation("UserTrainingPlans")
   sessionFeedback SessionFeedback[] @relation("UserSessionFeedback")
+  
+  // 🚀 NEW: Generated sessions for custom plans
+  generatedSessions GeneratedSession[] @relation("UserGeneratedSessions")
   
   @@map("users")
 }
 
-// ✅ User Profile for goal setting and onboarding
+// 🚀 ENHANCED: UserProfile with custom plan generation fields (unchanged from your current)
 model UserProfile {
   id     String @id @default(cuid())
   userId String @unique
   
-  // Goal setting (for guided onboarding)
+  // ✅ EXISTING: Goal setting (preserved)
   raceType     RaceType @default(HALF_MARATHON)
-  targetTime   String   @default("2:00:00")  // Target race time
+  targetTime   String   @default("2:00:00")  // Target race time or "FINISH"
   raceDate     DateTime? // Target race date
   fitnessLevel FitnessLevel @default(INTERMEDIATE)
   
-  // Training preferences
+  // ✅ EXISTING: Training preferences (preserved)
   trainingDaysPerWeek Int @default(4)
   preferredDifficulty Int @default(5) // 1-10 scale
   
-  // Personal info (optional)
+  // ✅ EXISTING: Personal info (preserved)
   age     Int?
   weight  Float? // in kg
   gender  String?
   
+  // 🚀 NEW: Personal Bests (for AI plan intelligence)
+  pb5k            String? // "MM:SS" format, e.g., "23:45"
+  pb10k           String? // "MM:SS" format, e.g., "48:30"
+  pbHalfMarathon  String? // "H:MM:SS" format, e.g., "1:45:20"
+  pbMarathon      String? // "H:MM:SS" format, e.g., "3:30:15"
+  pbCustom        String? // For custom race distances
+  pbCustomDistance String? // "5.2K", "15K", etc.
+  
+  // 🚀 NEW: Other Training Activities
+  otherWorkouts   String[] @default([]) // ["gym", "cycling", "swimming", "yoga"]
+  gymDaysPerWeek  Int?     // How many gym sessions per week
+  gymType         String?  // "strength", "crossfit", "functional"
+  
+  // 🚀 NEW: Running Club Integration
+  runningClub     String?  // Club name, e.g., "MadeRunning"
+  clubSchedule    String[] @default([]) // ["Monday 5PM", "Wednesday 5AM", "Saturday 9AM"]
+  keepClubRuns    Boolean  @default(true) // Preserve club schedule in plan
+  
+  // 🚀 NEW: Training Preferences
+  timePreferences String[] @default([]) // ["early_morning", "evening", "flexible"]
+  workoutTypes    String[] @default([]) // ["outdoor", "treadmill", "track", "trail"]
+  location        String?  // City/region for weather/terrain considerations
+  
+  // 🚀 NEW: Advanced Preferences
+  injuryHistory   String[] @default([]) // ["hamstring", "knee", "ankle"]
+  restDayPrefs    String[] @default([]) // ["sunday", "wednesday"]
+  maxWeeklyMiles  Float?   // Maximum weekly mileage preference
+  
+  // 🚀 NEW: Plan Generation Metadata
+  planGenerated   Boolean  @default(false) // Has custom plan been generated
+  lastPlanUpdate  DateTime? // When plan was last regenerated
+  onboardingComplete Boolean @default(false) // Full onboarding completed
+  
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   
-  // 🔧 FIXED: Proper relationship with relation name
+  // Proper relationship with relation name
   user User @relation("UserProfile", fields: [userId], references: [id], onDelete: Cascade)
   
   @@map("user_profiles")
 }
 
-// 🔧 FIXED: TrainingPlan with proper user relationship
-model TrainingPlan {
-  id          String   @id @default(cuid())
-  userId      String   // Link to user
-  goalTime    String   @default("2:00:00")
-  raceDate    DateTime @default("2025-10-12T00:00:00Z")
-  createdAt   DateTime @default(now())
+// 🚀 NEW: Generated Session table for AI-powered custom plans
+model GeneratedSession {
+  id        String   @id @default(cuid())
+  userId    String   // User who owns this session
+  week      Int      // Training week (1-12)
+  dayOfWeek String   // "Monday", "Tuesday", etc.
   
-  // 🔧 FIXED: Proper relationships with relation names
+  // Session Identification
+  sessionType    SessionType  // RUNNING, GYM, REST, CROSS_TRAINING
+  sessionSubType String?      // "easy", "tempo", "intervals", "long", "push", "pull", "legs"
+  
+  // Running Session Data (for sessionType = RUNNING)
+  distance       Float?       // Distance in kilometers
+  pace           String?      // Target pace in "MM:SS" format
+  duration       String?      // Duration like "60 min"
+  
+  // Session Schedule & Context
+  scheduledTime  String?      // "17:00", "05:00", etc.
+  isRunningClub  Boolean      @default(false) // Is this a club session
+  isMoveable     Boolean      @default(true)  // Can be rescheduled via drag-drop
+  
+  // Session Details (stored as JSON for flexibility)
+  warmup         String?      // Warmup description
+  mainSet        String?      // Main workout description  
+  cooldown       String?      // Cooldown description
+  targetRPE      Json?        // { min: 4, max: 6, description: "Easy pace" }
+  
+  // AI Modification Tracking
+  aiModified     Boolean      @default(false) // Has AI modified this session
+  originalData   Json?        // Original session data before AI modifications
+  aiReason       String?      // Why AI modified this session
+  
+  // Plan Generation Context
+  planVersion    String       @default("1.0")  // Track plan iterations
+  generatedAt    DateTime     @default(now())   // When this session was generated
+  lastModified   DateTime     @updatedAt        // When last modified by AI
+  
+  // Relationships
+  user User @relation("UserGeneratedSessions", fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Ensure unique sessions per user/week/day combination
+  @@unique([userId, week, dayOfWeek, sessionType])
+  @@map("generated_sessions")
+}
+
+// ✅ TrainingPlan (includes ALL existing columns - preserves your data)
+model TrainingPlan {
+  id            String   @id @default(cuid())
+  userId        String   // Link to user
+  goalTime      String   @default("2:00:00")
+  raceDate      DateTime @default("2025-10-12T00:00:00Z")
+  createdAt     DateTime @default(now())
+  
+  // ✅ EXISTING FIELDS: Added back to match your actual database
+  currentWeek   Int      @default(1)
+  predictedTime String   @default("2:00:00")
+  startDate     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  // Proper relationships with relation names
   user     User              @relation("UserTrainingPlans", fields: [userId], references: [id], onDelete: Cascade)
   feedback SessionFeedback[] @relation("TrainingPlanFeedback")
 
-   @@map("training_plans")    // ← ADD THIS LINE  
+  @@map("training_plans")
 }
 
-// 🔧 CORRECTED: Update your SessionFeedback model to match real database
-
+// ✅ SessionFeedback (unchanged - preserves existing data)
 model SessionFeedback {
   id              String   @id @default(cuid())
-  userId          String   // ✅ Matches DB
-  sessionId       String   // ✅ Matches DB  
-  week            Int      // 🔧 CHANGED: weekNumber → week (matches DB column)
-  day             String   // ✅ Matches DB
-  sessionType     String   // ✅ Matches DB
-  sessionSubType  String   // ✅ Matches DB
-  plannedDistance Float?   // ✅ Matches DB
-  plannedPace     String?  // ✅ Matches DB
-  plannedTime     String?  // ✅ Matches DB
-  completed       String   // ✅ Matches DB
-  actualPace      String?  // ✅ Matches DB
-  difficulty      Int      // ✅ Matches DB
-  rpe            Int       // ✅ Matches DB
-  feeling        String    // ✅ Matches DB
-  comments       String?   // ✅ Matches DB
-  // aiModified - I don't see this in your DB, remove if not exists
-  submittedAt    DateTime  // 🔧 CHANGED: createdAt → submittedAt (matches DB)
+  userId          String
+  sessionId       String
+  week            Int      // Matches DB column
+  day             String
+  sessionType     String
+  sessionSubType  String
+  plannedDistance Float?
+  plannedPace     String?
+  plannedTime     String?
+  completed       String
+  actualPace      String?
+  difficulty      Int
+  rpe            Int
+  feeling        String
+  comments       String?
+  submittedAt    DateTime  // Matches DB
   
-  // Relationships - these need the actual foreign key column names
+  // Relationships
   user           User         @relation("UserSessionFeedback", fields: [userId], references: [id], onDelete: Cascade)
   trainingPlan   TrainingPlan @relation("TrainingPlanFeedback", fields: [trainingPlanId], references: [id], onDelete: Cascade)
-  trainingPlanId String       // ✅ Matches DB
+  trainingPlanId String
   
   @@map("session_feedback")
 }
 
-// ✅ Enums for goal setting
+// 🚀 NEW: Session Type enum for generated sessions
+enum SessionType {
+  RUNNING
+  GYM
+  REST
+  CROSS_TRAINING  // yoga, cycling, swimming, etc.
+}
+
+// 🚀 ENHANCED: Updated RaceType enum
 enum RaceType {
   FIVE_K
   TEN_K
@@ -110,6 +203,7 @@ enum RaceType {
   CUSTOM
 }
 
+// ✅ FitnessLevel (unchanged)
 enum FitnessLevel {
   BEGINNER      // New to running
   INTERMEDIATE  // Regular runner, some race experience  

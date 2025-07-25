@@ -146,6 +146,8 @@ const [weekAnalysisResult, setWeekAnalysisResult] = useState<EnhancedAIResult | 
 const [weekTransitionLoading, setWeekTransitionLoading] = useState(false);
 
   const [originalGoalTime, setOriginalGoalTime] = useState('2:00:00');
+  const [hasGeneratedPlan, setHasGeneratedPlan] = useState<boolean>(false);
+const [planCheckComplete, setPlanCheckComplete] = useState<boolean>(false);
 
   useEffect(() => {
   // Track if user manually changes goal or if AI updates it
@@ -448,21 +450,40 @@ const showGymSessions = userId === null || isAdminUser;
     };
   };
 
-const checkWeekCompletionAndAnalyze = useCallback(async () => {
-  if (!userId) return;
+
+
+const checkForGeneratedPlan = useCallback(async (userIdToCheck: string) => {
+  if (!userIdToCheck || planCheckComplete) return;
   
-  // Only analyze when week completion reaches 100%
-  const completionPercentage = getWeekCompletionPercentage();
+  console.log(`🔍 Checking plan for user: ${userIdToCheck}`);
   
-  if (completionPercentage === 100 && currentWeek < 12) {
-    console.log(`🧠 Week ${currentWeek} completed (100%)! Triggering proactive AI analysis...`);
-    
-    // Small delay to ensure all feedback is processed
-    setTimeout(() => {
-      triggerProactiveWeekAnalysis();
-    }, 2000);
+  try {
+    const response = await fetch(`/api/training-plan?userId=${userIdToCheck}`);
+    if (response.ok) {
+      const data = await response.json();
+      setHasGeneratedPlan(data.planGenerated || false);
+      setPlanCheckComplete(true);
+      console.log(`📊 Generated plan available: ${data.planGenerated}`);
+    }
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Error checking plan:', errorMessage);
+    setPlanCheckComplete(true); // Mark complete even on error
   }
-}, [currentWeek, userId, completedSessions]);
+}, [planCheckComplete]); // Only depends on planCheckComplete
+
+// STEP 3: Replace the useEffect with this controlled version
+useEffect(() => {
+  if (userId && !planCheckComplete) {
+    checkForGeneratedPlan(userId);
+  }
+}, [userId, checkForGeneratedPlan, planCheckComplete]); // Controlled dependencies
+
+useEffect(() => {
+  setPlanCheckComplete(false);
+  setHasGeneratedPlan(false);
+}, [userId]); // Only when userId changes
+
 
 const triggerProactiveWeekAnalysis = async () => {
   if (weekTransitionLoading || currentWeek >= 12) return;
@@ -653,10 +674,12 @@ useEffect(() => {
         setCompletedSessions(completed);
         console.log(`📋 FINAL: Loaded ${completed.size} completed sessions for week ${currentWeek}, user: ${userId}`);
         
-        // Check for week completion after loading sessions
-        if (completed.size > 0) {
-          checkWeekCompletionAndAnalyze();
-        }
+        // ❌ REMOVE THIS CALL - it's causing the infinite loop
+        // if (completed.size > 0) {
+        //   setTimeout(() => {
+        //     checkWeekCompletionAndAnalyze();
+        //   }, 500);
+        // }
       }
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -665,7 +688,23 @@ useEffect(() => {
   };
   
   loadCompletedSessions();
-}, [currentWeek, userId]); // ✅ REMOVED checkWeekCompletionAndAnalyze
+}, [currentWeek, userId]); // ✅ Clean dependencies
+
+const checkWeekCompletionAndAnalyze = useCallback(async () => {
+  if (!userId) return;
+  
+  // Only analyze when week completion reaches 100%
+  const completionPercentage = getWeekCompletionPercentage();
+  
+  if (completionPercentage === 100 && currentWeek < 12) {
+    console.log(`🧠 Week ${currentWeek} completed (100%)! Triggering proactive AI analysis...`);
+    
+    // Small delay to ensure all feedback is processed
+    setTimeout(() => {
+      triggerProactiveWeekAnalysis();
+    }, 2000);
+  }
+}, [currentWeek, userId]); // ✅ Remove completedSessions dependency - function reads current state directly
 
 useEffect(() => {
   // Debug: Log both sets of IDs to compare
@@ -683,6 +722,8 @@ useEffect(() => {
       });
     });
     
+
+
     console.log('🔍 DEBUG: Completed session IDs from database:');
     completedSessions.forEach(id => {
       console.log(`✅ Completed: ${id}`);
@@ -1582,6 +1623,11 @@ const MotivationalAIModal = () => {
         <div className="p-6">
           {/* Header */}
           <div className="flex items-center gap-3 mb-6">
+            {hasGeneratedPlan && (
+  <div className="text-xs text-green-400 mb-2">
+    🤖 Using AI-generated personalized plan
+  </div>
+)}
             <div className="w-8 h-8 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-full flex items-center justify-center">
               <span className="text-xs font-bold text-black">AI</span>
             </div>
