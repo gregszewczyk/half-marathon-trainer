@@ -29,7 +29,7 @@ const PlanGenerationStatus = ({ userId, onPlanReady }: PlanGenerationStatusProps
     }
   );
 
-  // Handle SWR data changes
+  // Handle SWR data changes and trigger generation if needed
   useEffect(() => {
     if (error) {
       console.error('❌ SWR Error checking plan status:', error);
@@ -60,17 +60,56 @@ const PlanGenerationStatus = ({ userId, onPlanReady }: PlanGenerationStatusProps
       setTimeout(() => {
         onPlanReady();
       }, 2000);
-    } else if (data.onboardingComplete) {
-      console.log('🤖 Plan still generating...');
-      setStatus('generating');
-      setMessage('AI is analyzing your goals and creating your personalized training plan...');
-      setProgress(prev => Math.min(prev + 20, 90));
-    } else {
+    } else if (data.onboardingComplete && !data.planGenerated) {
+      // ✅ TRIGGER PLAN GENERATION if onboarding complete but no plan
+      console.log('🚀 Onboarding complete, need to generate plan...');
+      
+      if (status !== 'generating') {
+        setStatus('generating');
+        setMessage('Starting AI plan generation...');
+        setProgress(20);
+        
+        // Trigger plan generation directly from frontend
+        triggerPlanGeneration();
+      } else {
+        // Already generating, just update progress
+        setMessage('AI is analyzing your goals and creating your personalized training plan...');
+        setProgress(prev => Math.min(prev + 10, 90));
+      }
+    } else if (!data.onboardingComplete) {
       console.log('❌ Onboarding not completed');
       setStatus('error');
       setMessage('Onboarding not completed. Please complete the setup process.');
     }
-  }, [data, error, userId, onPlanReady]);
+  }, [data, error, userId, onPlanReady, status]);
+
+  // Function to trigger plan generation
+  const triggerPlanGeneration = async () => {
+    try {
+      console.log('🤖 Calling /api/generate-plan...');
+      const response = await fetch('/api/generate-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId })
+      });
+
+      if (response.ok) {
+        console.log('✅ Plan generation triggered successfully');
+        setMessage('AI is analyzing your goals and creating your personalized training plan...');
+        setProgress(40);
+        // SWR will continue polling automatically
+      } else {
+        console.error('❌ Failed to trigger plan generation:', response.status);
+        setStatus('error');
+        setMessage('Failed to start plan generation. Please try again.');
+      }
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('❌ Error triggering plan generation:', errorMessage);
+      setStatus('error');
+      setMessage('Network error starting plan generation. Please check your connection.');
+    }
+  };
 
   // Manual retry function
   const handleRetry = async () => {
