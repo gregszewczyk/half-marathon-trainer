@@ -1,12 +1,14 @@
+// 🔧 FIXED: src/hooks/useTrainingData.ts
+// Updated to handle empty database and API errors gracefully
+
 import { useState, useEffect } from 'react'
 
 interface TrainingStats {
   daysToRace: number;
   weekCompletion: number;
   weekDistance: number;
-   isLoading: boolean;
+  isLoading: boolean;
   predictedTime: string;
-  
 }
 
 export function useTrainingStats(userId: string = 'default'): TrainingStats {
@@ -35,19 +37,31 @@ export function useTrainingStats(userId: string = 'default'): TrainingStats {
         const today = new Date();
         const daysToRace = Math.ceil((raceDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
         
-        const response = await fetch(`/api/feedback?weekNumber=1&userId=${userId}`);
+        // Try to fetch feedback data
         let weekCompletion = 0;
         
-        if (response.ok) {
-          const { feedback } = await response.json();
-          console.log(`📊 Data for ${userId}:`, feedback);
+        try {
+          const response = await fetch(`/api/feedback?weekNumber=1&userId=${userId}`);
           
-          const totalRunningSessions = 4;
-          const completedSessions = Array.isArray(feedback) ? 
-            feedback.filter((f: any) => f.completed === 'yes' && f.sessionType === 'running').length : 0;
-          
-          weekCompletion = Math.round((completedSessions / totalRunningSessions) * 100);
-          console.log(`✅ ${userId} completion: ${weekCompletion}%`);
+          if (response.ok) {
+            const { feedback } = await response.json();
+            console.log(`📊 Data for ${userId}:`, feedback);
+            
+            const totalRunningSessions = 4;
+            const completedSessions = Array.isArray(feedback) ? 
+              feedback.filter((f: any) => f.completed === 'yes' && f.sessionType === 'running').length : 0;
+            
+            weekCompletion = Math.round((completedSessions / totalRunningSessions) * 100);
+            console.log(`✅ ${userId} completion: ${weekCompletion}%`);
+          } else {
+            console.log(`⚠️ API returned ${response.status}, using default values`);
+            // Don't throw error, just use default values
+            weekCompletion = 0;
+          }
+        } catch (apiError) {
+          console.log('⚠️ API call failed, using default values:', apiError instanceof Error ? apiError.message : 'Unknown error');
+          // Don't throw error, just use default values
+          weekCompletion = 0;
         }
 
         setCompletionData({
@@ -59,8 +73,20 @@ export function useTrainingStats(userId: string = 'default'): TrainingStats {
         });
         
       } catch (error) {
-        console.error(`Error for ${userId}:`, error);
-        setCompletionData(prev => ({ ...prev, isLoading: false }));
+        console.error(`Error for ${userId}:`, error instanceof Error ? error.message : 'Unknown error');
+        
+        // Set safe default values even on error
+        const raceDate = new Date('2025-10-12');
+        const today = new Date();
+        const daysToRace = Math.ceil((raceDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        
+        setCompletionData({
+          daysToRace,
+          weekCompletion: 0,
+          weekDistance: 22,
+          predictedTime: "2:00:00",
+          isLoading: false
+        });
       }
     };
 

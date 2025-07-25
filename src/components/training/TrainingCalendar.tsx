@@ -23,6 +23,10 @@ interface Session {
   targetRPE?: RPETarget;
 }
 
+interface AITrainingCalendarProps {
+  userId?: string;
+}
+
 interface RPETarget {
   min: number;
   max: number;
@@ -103,7 +107,10 @@ interface EnhancedAIResult {
   };
 }
 
-const AITrainingCalendar = () => {
+const AITrainingCalendar = ({ userId = 'default' }: AITrainingCalendarProps) => {
+
+    console.log('🔍 TrainingCalendar initialized with userId:', userId);
+
   const [currentWeek, setCurrentWeek] = useState(1);
   const [goalTime, setGoalTime] = useState('2:00:00');
   const [predictedTime, setPredictedTime] = useState('2:00:00');
@@ -147,19 +154,11 @@ const [weekTransitionLoading, setWeekTransitionLoading] = useState(false);
   }
 }, [goalTime, originalGoalTime]);
 
-  const [userId, setUserId] = useState<string | null>(null);
-useEffect(() => {
-  // Read userId from URL parameter
-  const urlParams = new URLSearchParams(window.location.search);
-  const userParam = urlParams.get('user');
-  const detectedUserId = userParam || 'default';
-  setUserId(detectedUserId);
-  console.log('🔍 TrainingCalendar detected user:', detectedUserId);
-}, []);
 
-useEffect(() => {
-  console.log('🎯 CompletedSessions state updated:', Array.from(completedSessions), 'for user:', userId);
-}, [completedSessions, userId]);
+
+  useEffect(() => {
+    console.log('🎯 CompletedSessions state updated:', Array.from(completedSessions), 'for user:', userId);
+  }, [completedSessions, userId]);
 
 const formatGoalTimeForDisplay = (goalTimeString: string): string => {
   // Convert "2:00:00" to "sub-2:00" or "1:55:00" to "sub-1:55"
@@ -231,6 +230,11 @@ useEffect(() => {
     };
   };
 
+const AITrainingCalendar = ({ userId = 'default' }: AITrainingCalendarProps) => {
+  // Remove the old URL parameter detection code and replace with prop usage
+  console.log('🔍 TrainingCalendar initialized with userId:', userId);
+}
+
   const calculateDuration = (distance: number, pace: string): number => {
     const paceSeconds = paceToSeconds(pace);
     const totalSeconds = (distance * paceSeconds) + 300 + 600;
@@ -288,7 +292,12 @@ useEffect(() => {
 
     const plan = weeklyPlans[weekNum as keyof typeof weeklyPlans] || weeklyPlans[1];
 
-const showGymSessions = userId === null || userId === 'default';
+// ✅ Better approach - check by stored user name/email
+const storedUserName = localStorage.getItem('userName') || '';
+const isAdminUser = storedUserName.toLowerCase().includes('admin') || 
+                   userId === 'default' || 
+                   userId === 'cmdhtwtil00000vg18swahirhu';
+const showGymSessions = userId === null || isAdminUser;
 
     const baseSchedule: { [key: string]: Session[] } = {
     Monday: [
@@ -644,33 +653,92 @@ useEffect(() => {
         setCompletedSessions(completed);
         console.log(`📋 FINAL: Loaded ${completed.size} completed sessions for week ${currentWeek}, user: ${userId}`);
         
-        // 🆕 NEW: Check for week completion after loading sessions
+        // Check for week completion after loading sessions
         if (completed.size > 0) {
           checkWeekCompletionAndAnalyze();
         }
       }
-    } catch (error) {
-      console.error('Error loading completed sessions:', error);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Error loading completed sessions:', errorMessage);
     }
   };
   
   loadCompletedSessions();
-}, [currentWeek, userId, checkWeekCompletionAndAnalyze]);
+}, [currentWeek, userId]); // ✅ REMOVED checkWeekCompletionAndAnalyze
 
-  // Enhanced AI functions
-const getRecentFeedback = async () => {
+useEffect(() => {
+  // Debug: Log both sets of IDs to compare
+  if (userId && currentWeek === 1) {
+    console.log('🔍 DEBUG: Current calendar session IDs for week 1:');
+    
+    // Get current week data to see what IDs the calendar is generating
+    const debugWeekData = getWeekData(1);
+    Object.keys(debugWeekData.weeklySchedule).forEach(day => {
+      const daySessions = debugWeekData.weeklySchedule[day] || [];
+      daySessions.forEach(session => {
+        if (session.type === 'running') {
+          console.log(`📅 ${day}: ${session.id} (${session.subType})`);
+        }
+      });
+    });
+    
+    console.log('🔍 DEBUG: Completed session IDs from database:');
+    completedSessions.forEach(id => {
+      console.log(`✅ Completed: ${id}`);
+    });
+    
+    console.log('🔍 DEBUG: ID comparison:');
+    const calendarRunningIds = Object.values(debugWeekData.weeklySchedule)
+      .flat()
+      .filter(s => s.type === 'running')
+      .map(s => s.id);
+      
+    calendarRunningIds.forEach(calendarId => {
+      const isCompleted = completedSessions.has(calendarId);
+      console.log(`${isCompleted ? '✅' : '❌'} ${calendarId} - ${isCompleted ? 'MATCHED' : 'NOT FOUND in database'}`);
+    });
+  }
+}, [userId, currentWeek, completedSessions]);
+
+// 🔍 ALSO: Check what's actually in your database
+// Add this function to manually check your database
+const debugDatabaseContent = async () => {
+  if (!userId) return;
+  
   try {
-    // Include userId in the API call
-    const response = await fetch(`/api/feedback?weekNumber=${currentWeek}&recent=5&userId=${userId}`);
+    console.log('🔍 DEBUG: Fetching ALL feedback for user:', userId);
+    const response = await fetch(`/api/feedback?userId=${userId}&all=true`);
     if (response.ok) {
       const { feedback } = await response.json();
-      return Array.isArray(feedback) ? feedback : [];
+      console.log('📊 DEBUG: All feedback in database:', feedback);
+      
+      if (Array.isArray(feedback)) {
+        feedback.forEach((f: any) => {
+          console.log(`📝 DB Record: sessionId="${f.sessionId}", completed="${f.completed}", week=${f.weekNumber}, type=${f.sessionType}`);
+        });
+      }
     }
-  } catch (error) {
-    console.error('Error fetching recent feedback:', error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('DEBUG: Error fetching all feedback:', errorMessage);
   }
-  return [];
 };
+
+  // Enhanced AI functions
+ const getRecentFeedback = async () => {
+    try {
+      const response = await fetch(`/api/feedback?weekNumber=${currentWeek}&recent=5&userId=${userId}`);
+      if (response.ok) {
+        const { feedback } = await response.json();
+        return Array.isArray(feedback) ? feedback : [];
+      }
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Error fetching recent feedback:', errorMessage);
+    }
+    return [];
+  };
 
   const assessFitnessTrajectory = (recentFeedback: any[]) => {
     if (!recentFeedback || recentFeedback.length === 0) return 'unknown';
@@ -1023,83 +1091,83 @@ const getMotivationalAIFeedback = async (sessionData: any, feedbackData: any): P
 
   // FEEDBACK SUBMISSION
 const handleFeedbackSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-  e.preventDefault();
-  const formData = new FormData(e.target as HTMLFormElement);
-  
-  const feedback = {
-    completed: formData.get('completed') as string,
-    actualPace: formData.get('actualPace') as string | null,
-    difficulty: difficultyValue,
-    rpe: rpeValue,
-    feeling: formData.get('feeling') as string,
-    comments: formData.get('comments') as string | null
-  };
+    e.preventDefault();
+    const formData = new FormData(e.target as HTMLFormElement);
+    
+    const feedback = {
+      completed: formData.get('completed') as string,
+      actualPace: formData.get('actualPace') as string | null,
+      difficulty: difficultyValue,
+      rpe: rpeValue,
+      feeling: formData.get('feeling') as string,
+      comments: formData.get('comments') as string | null
+    };
 
-  try {
-    if (!selectedSession) {
-      throw new Error('No session selected');
-    }
-
-    if (completedSessions.has(selectedSession.id)) {
-      const confirmOverwrite = window.confirm(
-        'You have already submitted feedback for this session. Do you want to update it?'
-      );
-      if (!confirmOverwrite) {
-        setShowFeedback(false);
-        return;
+    try {
+      if (!selectedSession) {
+        throw new Error('No session selected');
       }
-    }
 
-    console.log('💾 Saving feedback for session:', selectedSession.id);
-    
-    const dayMap: { [key: string]: string } = {
-      'mon': 'monday',
-      'tue': 'tuesday', 
-      'wed': 'wednesday',
-      'thu': 'thursday',
-      'fri': 'friday',
-      'sat': 'saturday',
-      'sun': 'sunday'
-    };
-    
-    const sessionIdParts = selectedSession.id.split('-');
-    const dayPrefix = sessionIdParts.length > 0 ? sessionIdParts[0] : '';
-    const day = dayPrefix && dayMap[dayPrefix] ? dayMap[dayPrefix] : 'unknown';
-    
-    const feedbackData = {
-      sessionId: selectedSession.id,
-      weekNumber: currentWeek,
-      day: day,
-      sessionType: selectedSession.type,
-      sessionSubType: selectedSession.subType,
-      plannedDistance: selectedSession.distance,
-      plannedPace: selectedSession.pace,
-      plannedTime: selectedSession.time,
-      completed: feedback.completed,
-      actualPace: feedback.actualPace,
-      difficulty: feedback.difficulty,
-      rpe: feedback.rpe,
-      feeling: feedback.feeling,
-      comments: feedback.comments
-    };
-    
-    const feedbackResponse = await fetch('/api/feedback', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...feedbackData,
-        userId: userId
-      })
-    });
+      if (completedSessions.has(selectedSession.id)) {
+        const confirmOverwrite = window.confirm(
+          'You have already submitted feedback for this session. Do you want to update it?'
+        );
+        if (!confirmOverwrite) {
+          setShowFeedback(false);
+          return;
+        }
+      }
 
-    if (!feedbackResponse.ok) {
-      const errorData = await feedbackResponse.json();
-      throw new Error(`Failed to save feedback: ${errorData.error || 'Unknown error'}`);
-    }
+      console.log('💾 Saving feedback for session:', selectedSession.id);
+      
+      const dayMap: { [key: string]: string } = {
+        'mon': 'monday',
+        'tue': 'tuesday', 
+        'wed': 'wednesday',
+        'thu': 'thursday',
+        'fri': 'friday',
+        'sat': 'saturday',
+        'sun': 'sunday'
+      };
+      
+      const sessionIdParts = selectedSession.id.split('-');
+      const dayPrefix = sessionIdParts.length > 0 ? sessionIdParts[0] : '';
+      const day = dayPrefix && dayMap[dayPrefix] ? dayMap[dayPrefix] : 'unknown';
+      
+      const feedbackData = {
+        sessionId: selectedSession.id,
+        weekNumber: currentWeek,
+        day: day,
+        sessionType: selectedSession.type,
+        sessionSubType: selectedSession.subType,
+        plannedDistance: selectedSession.distance,
+        plannedPace: selectedSession.pace,
+        plannedTime: selectedSession.time,
+        completed: feedback.completed,
+        actualPace: feedback.actualPace,
+        difficulty: feedback.difficulty,
+        rpe: feedback.rpe,
+        feeling: feedback.feeling,
+        comments: feedback.comments
+      };
+      
+      const feedbackResponse = await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...feedbackData,
+          userId: userId  // Use prop userId here
+        })
+      });
 
-    const result = await feedbackResponse.json();
-    console.log('✅ Feedback saved to database:', result);
-    console.log('🎯 TrainingCalendar current userId:', userId);
+      if (!feedbackResponse.ok) {
+        const errorData = await feedbackResponse.json();
+        throw new Error(`Failed to save feedback: ${errorData.error || 'Unknown error'}`);
+      }
+
+      const result = await feedbackResponse.json();
+      console.log('✅ Feedback saved to database:', result);
+      console.log('🎯 TrainingCalendar current userId:', userId);
 
     // Show success message
     const successPanel = document.createElement('div');
