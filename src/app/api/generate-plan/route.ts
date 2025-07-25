@@ -177,8 +177,10 @@ async function generateAITrainingPlan(userId: string, data: OnboardingData): Pro
 }
 
 async function analyzeUserProfile(data: OnboardingData): Promise<any> {
-  const prompt = `
-Analyze this runner's profile and provide training recommendations:
+  console.log('🤖 STARTING AI ANALYSIS');
+  console.log('🔑 API Key exists:', !!process.env.PERPLEXITY_API_KEY);
+  
+  const prompt = `Analyze this runner's profile and provide training recommendations:
 
 RUNNER PROFILE:
 - Race Goal: ${data.raceType} in ${data.targetTime}
@@ -198,47 +200,77 @@ ANALYSIS NEEDED:
 
 Respond with JSON only:
 {
-  "fitnessLevel": "...",
-  "intensity": "...", 
-  "focusAreas": ["...", "...", "..."],
-  "injuryRisk": "low/medium/high",
-  "approach": "...",
-  "reasoning": "..."
+  "fitnessLevel": "intermediate",
+  "intensity": "moderate", 
+  "focusAreas": ["aerobic base", "consistency", "injury prevention"],
+  "injuryRisk": "low",
+  "approach": "progressive training",
+  "reasoning": "detailed explanation"
 }`;
 
-  const response = await fetch('https://api.perplexity.ai/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'sonar-deep-research',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 1000,
-      temperature: 0.1
-    })
-  });
+  console.log('📡 Making Perplexity API call...');
 
-  if (!response.ok) {
-    throw new Error(`AI analysis failed: ${response.status}`);
-  }
-
-  const result = await response.json();
-  const aiText = result.choices[0]?.message?.content || '{}';
-  
   try {
-    // Extract JSON from AI response
-    const jsonMatch = aiText.match(/\{[\s\S]*\}/);
-    return jsonMatch ? JSON.parse(jsonMatch[0]) : { fitnessLevel: 'intermediate', intensity: 'moderate' };
-  } catch {
-    return { fitnessLevel: 'intermediate', intensity: 'moderate' };
+    const response = await fetch('https://api.perplexity.ai/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: "sonar-deep-research",
+        messages: [
+          {
+            role: "user",
+            content: prompt
+          }
+        ]
+      })
+    });
+
+    console.log('📡 Response status:', response.status);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ API Error:', response.status, errorText);
+      throw new Error(`AI analysis failed: ${response.status}`);
+    }
+
+    const result = await response.json();
+    console.log('✅ AI Analysis result received');
+    
+    const aiText = result.choices[0]?.message?.content || '{}';
+    
+    try {
+      // Extract JSON from AI response
+      const jsonMatch = aiText.match(/\{[\s\S]*\}/);
+      return jsonMatch ? JSON.parse(jsonMatch[0]) : { 
+        fitnessLevel: 'intermediate', 
+        intensity: 'moderate',
+        focusAreas: ['aerobic base', 'consistency'],
+        injuryRisk: 'low',
+        approach: 'progressive training'
+      };
+    } catch (parseError) {
+      console.error('JSON parse error:', parseError);
+      return { 
+        fitnessLevel: 'intermediate', 
+        intensity: 'moderate',
+        focusAreas: ['aerobic base', 'consistency'],
+        injuryRisk: 'low',
+        approach: 'progressive training'
+      };
+    }
+  } catch (fetchError) {
+    console.error('Fetch error:', fetchError);
+    throw fetchError;
   }
 }
 
 async function generateAIPaceZones(data: OnboardingData, analysis: any): Promise<any> {
-  const prompt = `
-Based on this runner's profile, calculate optimal training pace zones:
+  console.log('🏃 STARTING AI PACE ZONES');
+  
+  const prompt = `Based on this runner's profile, calculate optimal training pace zones:
 
 RUNNER DATA:
 - Goal: ${data.raceType} in ${data.targetTime}
@@ -256,45 +288,58 @@ Consider their current fitness and goal time. Be realistic but progressive.
 
 Respond with JSON only:
 {
-  "easy": "X:XX",
-  "tempo": "X:XX", 
-  "interval": "X:XX",
-  "long": "X:XX",
-  "target": "X:XX"
+  "easy": "6:30",
+  "tempo": "5:45", 
+  "interval": "5:15",
+  "long": "6:15",
+  "target": "5:41"
 }`;
 
-  const response = await fetch('https://api.perplexity.ai/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'sonar-deep-research',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 800,
-      temperature: 0.1
-    })
-  });
-
-  if (!response.ok) {
-    throw new Error(`AI pace zones failed: ${response.status}`);
-  }
-
-  const result = await response.json();
-  const aiText = result.choices[0]?.message?.content || '{}';
-  
   try {
-    const jsonMatch = aiText.match(/\{[\s\S]*\}/);
-    return jsonMatch ? JSON.parse(jsonMatch[0]) : calculateStaticPaceZones(data.raceType, data.targetTime);
-  } catch {
+    const response = await fetch('https://api.perplexity.ai/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: "sonar-deep-research",
+        messages: [
+          {
+            role: "user",
+            content: prompt
+          }
+        ]
+      })
+    });
+
+    console.log('📡 Pace zones response status:', response.status);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Pace zones API Error:', response.status, errorText);
+      throw new Error(`AI pace zones failed: ${response.status}`);
+    }
+
+    const result = await response.json();
+    const aiText = result.choices[0]?.message?.content || '{}';
+    
+    try {
+      const jsonMatch = aiText.match(/\{[\s\S]*\}/);
+      return jsonMatch ? JSON.parse(jsonMatch[0]) : calculateStaticPaceZones(data.raceType, data.targetTime);
+    } catch (parseError) {
+      console.error('Pace zones parse error:', parseError);
+      return calculateStaticPaceZones(data.raceType, data.targetTime);
+    }
+  } catch (fetchError) {
+    console.error('Pace zones fetch error:', fetchError);
     return calculateStaticPaceZones(data.raceType, data.targetTime);
   }
 }
-
 async function generateAIProgression(data: OnboardingData, analysis: any): Promise<any> {
-  const prompt = `
-Create a 12-week training progression for this runner:
+  console.log('📈 STARTING AI PROGRESSION');
+  
+  const prompt = `Create a 12-week training progression for this runner:
 
 PROFILE:
 - Goal: ${data.raceType} in ${data.targetTime}
@@ -324,50 +369,73 @@ Respond with JSON only:
   ]
 }`;
 
-  const response = await fetch('https://api.perplexity.ai/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'sonar-deep-research',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 2000,
-      temperature: 0.1
-    })
-  });
-
-  if (!response.ok) {
-    throw new Error(`AI progression failed: ${response.status}`);
-  }
-
-  const result = await response.json();
-  const aiText = result.choices[0]?.message?.content || '{}';
-  
   try {
-    const jsonMatch = aiText.match(/\{[\s\S]*\}/);
-    const progression = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+    const response = await fetch('https://api.perplexity.ai/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: "sonar-deep-research",
+        messages: [
+          {
+            role: "user",
+            content: prompt
+          }
+        ]
+      })
+    });
+
+    console.log('📡 Progression response status:', response.status);
     
-    if (progression && progression.weeks && progression.weeks.length === 12) {
-      return progression;
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Progression API Error:', response.status, errorText);
+      throw new Error(`AI progression failed: ${response.status}`);
     }
-  } catch (error) {
-    console.error('Failed to parse AI progression:', error);
+
+    const result = await response.json();
+    const aiText = result.choices[0]?.message?.content || '{}';
+    
+    try {
+      const jsonMatch = aiText.match(/\{[\s\S]*\}/);
+      const progression = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+      
+      if (progression && progression.weeks && progression.weeks.length === 12) {
+        return progression;
+      }
+    } catch (parseError) {
+      console.error('Progression parse error:', parseError);
+    }
+    
+    // Fallback to basic progression
+    return {
+      totalWeeks: 12,
+      weeks: Array.from({ length: 12 }, (_, i) => ({
+        week: i + 1,
+        phase: i < 4 ? 'base' : i < 8 ? 'build' : i < 10 ? 'peak' : 'taper',
+        easyMiles: 4 + i,
+        tempoMiles: 3 + Math.floor(i / 2),
+        intervalMiles: 2 + Math.floor(i / 3),
+        longMiles: 8 + i
+      }))
+    };
+  } catch (fetchError) {
+    console.error('Progression fetch error:', fetchError);
+    // Return fallback progression
+    return {
+      totalWeeks: 12,
+      weeks: Array.from({ length: 12 }, (_, i) => ({
+        week: i + 1,
+        phase: i < 4 ? 'base' : i < 8 ? 'build' : i < 10 ? 'peak' : 'taper',
+        easyMiles: 4 + i,
+        tempoMiles: 3 + Math.floor(i / 2),
+        intervalMiles: 2 + Math.floor(i / 3),
+        longMiles: 8 + i
+      }))
+    };
   }
-  
-  // Fallback to basic progression
-  return {
-    totalWeeks: 12,
-    weeks: Array.from({ length: 12 }, (_, i) => ({
-      week: i + 1,
-      phase: i < 4 ? 'base' : i < 8 ? 'build' : i < 10 ? 'peak' : 'taper',
-      easyMiles: 4 + i,
-      tempoMiles: 3 + Math.floor(i / 2),
-      intervalMiles: 2 + Math.floor(i / 3),
-      longMiles: 8 + i
-    }))
-  };
 }
 
 function generateAIWeekSessions(
