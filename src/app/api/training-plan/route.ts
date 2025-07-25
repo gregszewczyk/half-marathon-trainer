@@ -1,6 +1,5 @@
-// 🚀 src/app/api/training-plan/route.ts
-// REPLACEMENT for src/app/api/training/plan/route.ts
-// Fetch and update generated training sessions
+// 🚀 FIXED: src/app/api/training-plan/route.ts
+// Now returns userProfile data for plan generation
 
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
@@ -23,17 +22,26 @@ export async function GET(request: NextRequest) {
 
     console.log(`📅 Fetching training plan for user: ${userId}, week: ${week || 'all'}`);
 
-    // Check if user has generated plan
+    // ✅ FIXED: Get complete user profile data
     const userProfile = await prisma.userProfile.findUnique({
-      where: { userId },
-      select: { planGenerated: true, onboardingComplete: true }
+      where: { userId }
     });
 
-    if (!userProfile?.planGenerated || !userProfile?.onboardingComplete) {
+    if (!userProfile) {
       return NextResponse.json({
         planGenerated: false,
-        onboardingComplete: userProfile?.onboardingComplete || false,
-        sessions: []
+        onboardingComplete: false,
+        sessions: [],
+        userProfile: null  // ✅ FIXED: Explicitly return null when no profile
+      });
+    }
+
+    if (!userProfile.planGenerated || !userProfile.onboardingComplete) {
+      return NextResponse.json({
+        planGenerated: false,
+        onboardingComplete: userProfile.onboardingComplete || false,
+        sessions: [],
+        userProfile: userProfile  // ✅ FIXED: Return profile data for plan generation
       });
     }
 
@@ -78,7 +86,8 @@ export async function GET(request: NextRequest) {
       planGenerated: true,
       onboardingComplete: true,
       sessions: formattedSessions,
-      totalSessions: sessions.length
+      totalSessions: sessions.length,
+      userProfile: userProfile  // ✅ FIXED: Always return userProfile data
     });
 
   } catch (error: unknown) {
@@ -94,6 +103,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
+// POST method unchanged
 export async function POST(request: NextRequest) {
   try {
     // Handle AI modifications to individual sessions
@@ -113,7 +123,7 @@ export async function POST(request: NextRequest) {
 
     // Parse session ID to get week and day
     const sessionParts = sessionId.split('-');
-    const dayPrefix = sessionParts[0] || 'mon'; // Handle undefined case
+    const dayPrefix = sessionParts[0] || 'mon';
     const week = parseInt(sessionParts[sessionParts.length - 1] || '1');
     
     const dayMap: { [key: string]: string } = {
@@ -134,7 +144,7 @@ export async function POST(request: NextRequest) {
         userId,
         week,
         dayOfWeek,
-        sessionType: 'RUNNING' // Only modify running sessions
+        sessionType: 'RUNNING'
       }
     });
 
