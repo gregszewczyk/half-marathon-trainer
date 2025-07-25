@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { Brain, Clock, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
 
 interface PlanGenerationStatusProps {
   userId: string;
@@ -23,7 +22,8 @@ const PlanGenerationStatus = ({ userId, onPlanReady }: PlanGenerationStatusProps
       console.log(`📊 Plan status:`, {
         planGenerated: data.planGenerated,
         onboardingComplete: data.onboardingComplete,
-        sessionsCount: data.sessions?.length || 0
+        sessionsCount: data.sessions?.length || 0,
+        hasTriggered: hasTriggeredGeneration
       });
 
       if (data.planGenerated && data.sessions?.length > 0) {
@@ -36,16 +36,20 @@ const PlanGenerationStatus = ({ userId, onPlanReady }: PlanGenerationStatusProps
           onPlanReady();
         }, 2000);
       } else if (data.onboardingComplete && !data.planGenerated) {
-        // Only trigger generation once
+        // Check if generation has been triggered
         if (!hasTriggeredGeneration) {
           console.log('🚀 Need to generate plan - triggering once');
           setHasTriggeredGeneration(true);
           triggerPlanGeneration();
         } else {
-          console.log('🤖 Plan generation in progress...');
+          // Generation has been triggered, show progress
+          console.log('🤖 Plan generation in progress... waiting for completion');
           setStatus('generating');
-          setMessage('AI is creating your personalized training plan...');
-          setProgress(prev => Math.min(prev + 15, 90));
+          setMessage('AI is creating your personalized training plan... This may take up to 60 seconds.');
+          
+          // Don't set to error - just keep showing progress
+          const currentProgress = Math.min(progress + 10, 95);
+          setProgress(currentProgress);
         }
       } else {
         console.log('❌ Onboarding not completed');
@@ -55,8 +59,16 @@ const PlanGenerationStatus = ({ userId, onPlanReady }: PlanGenerationStatusProps
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('❌ Error checking plan status:', errorMessage);
-      setStatus('error');
-      setMessage('Error checking plan status. Please try again.');
+      
+      // Only set error if generation hasn't been triggered yet
+      if (!hasTriggeredGeneration) {
+        setStatus('error');
+        setMessage('Error checking plan status. Please try again.');
+      } else {
+        // Keep showing progress if generation is in progress
+        setStatus('generating');
+        setMessage('Plan generation in progress... Please wait.');
+      }
     }
   };
 
@@ -145,15 +157,15 @@ const PlanGenerationStatus = ({ userId, onPlanReady }: PlanGenerationStatusProps
   const getStatusIcon = () => {
     switch (status) {
       case 'checking':
-        return <RefreshCw className="w-8 h-8 text-blue-400 animate-spin" />;
+        return <div className="w-8 h-8 border-4 border-blue-400 border-t-transparent rounded-full animate-spin" />;
       case 'generating':
-        return <Brain className="w-8 h-8 text-cyan-400 animate-pulse" />;
+        return <div className="w-8 h-8 bg-cyan-400 rounded-full animate-pulse" />;
       case 'complete':
-        return <CheckCircle className="w-8 h-8 text-green-400" />;
+        return <div className="w-8 h-8 bg-green-400 rounded-full flex items-center justify-center text-black font-bold">✓</div>;
       case 'error':
-        return <AlertCircle className="w-8 h-8 text-red-400" />;
+        return <div className="w-8 h-8 bg-red-400 rounded-full flex items-center justify-center text-white font-bold">!</div>;
       default:
-        return <Clock className="w-8 h-8 text-gray-400" />;
+        return <div className="w-8 h-8 bg-gray-400 rounded-full" />;
     }
   };
 
@@ -217,8 +229,7 @@ const PlanGenerationStatus = ({ userId, onPlanReady }: PlanGenerationStatusProps
               onClick={handleRetry}
               className="w-full bg-red-600 hover:bg-red-700 text-white font-medium py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
             >
-              <RefreshCw className="w-4 h-4" />
-              Try Again
+              🔄 Try Again
             </button>
           </div>
         )}
