@@ -21,6 +21,8 @@ interface Session {
   originalPace?: string;
   originalDistance?: number;
   targetRPE?: RPETarget;
+  week?: number; // <-- Added for AI sessions
+  day?: string;  // <-- Added for AI sessions
 }
 
 interface AITrainingCalendarProps {
@@ -149,6 +151,11 @@ const [weekTransitionLoading, setWeekTransitionLoading] = useState(false);
   const [hasGeneratedPlan, setHasGeneratedPlan] = useState<boolean>(false);
 const [planCheckComplete, setPlanCheckComplete] = useState<boolean>(false);
 
+const [aiGeneratedSessions, setAiGeneratedSessions] = useState<Session[]>([]);
+const [loadingAiSessions, setLoadingAiSessions] = useState(false);
+const [useAiSessions, setUseAiSessions] = useState(false);
+
+
   useEffect(() => {
   // Track if user manually changes goal or if AI updates it
   if (goalTime !== originalGoalTime) {
@@ -162,6 +169,77 @@ const [planCheckComplete, setPlanCheckComplete] = useState<boolean>(false);
     console.log('🎯 CompletedSessions state updated:', Array.from(completedSessions), 'for user:', userId);
   }, [completedSessions, userId]);
 
+// 🚀 NEW: Determine if user should use AI sessions or hardcoded plan
+const shouldUseAiSessions = () => {
+  const storedUserName = localStorage.getItem('userName') || '';
+  const isAdminUser = storedUserName.toLowerCase().includes('admin') || 
+                     userId === 'default' || 
+                     userId === 'cmdhtwtil00000vg18swahirhu';
+  
+  // Admin users keep hardcoded plan, others use AI if available
+  return !isAdminUser && hasGeneratedPlan && aiGeneratedSessions.length > 0;
+};
+
+useEffect(() => {
+  const loadAiGeneratedSessions = async () => {
+    const storedUserName = localStorage.getItem('userName') || '';
+    const isAdminUser = storedUserName.toLowerCase().includes('admin') || 
+                       userId === 'default' || 
+                       userId === 'cmdhtwtil00000vg18swahirhu';
+
+    // Skip AI loading for admin users - they keep hardcoded plan
+    if (isAdminUser || !userId || !hasGeneratedPlan) {
+      console.log(`👑 Admin user or no generated plan - using hardcoded sessions`);
+      return;
+    }
+
+    setLoadingAiSessions(true);
+    try {
+      console.log(`🤖 Loading AI-generated sessions for user: ${userId}`);
+      
+      const response = await fetch(`/api/training-plan?userId=${userId}`);
+      if (response.ok) {
+        const data = await response.json();
+        
+        if (data.sessions && Array.isArray(data.sessions) && data.sessions.length > 0) {
+          console.log(`✅ Found ${data.sessions.length} AI-generated sessions`);
+          
+          // Convert database sessions to calendar format
+          const convertedSessions = data.sessions.map((dbSession: any) => ({
+            id: `ai-${dbSession.id}`,
+            type: 'running' as const,
+            subType: dbSession.sessionType || 'easy',
+            distance: dbSession.distance || 5,
+            pace: dbSession.pace || '6:00',
+            duration: `${Math.round((dbSession.distance || 5) * 6)}min`,
+            time: dbSession.timeOfDay || '17:00',
+            week: dbSession.week,
+            day: dbSession.dayOfWeek,
+            aiModified: true,
+            warmup: dbSession.warmup || '10 min easy jog + dynamic stretching',
+            mainSet: dbSession.aiReason || `${dbSession.distance}km at prescribed pace`,
+            cooldown: dbSession.cooldown || '5 min walk + stretching',
+            targetRPE: getTargetRPE(dbSession.sessionType || 'easy')
+          }));
+          
+          setAiGeneratedSessions(convertedSessions);
+          setUseAiSessions(true);
+          console.log(`🎯 AI sessions loaded and ready for user: ${userId}`);
+        } else {
+          console.log(`⚠️ No AI sessions found, falling back to hardcoded plan`);
+        }
+      }
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('❌ Error loading AI sessions:', errorMessage);
+    } finally {
+      setLoadingAiSessions(false);
+    }
+  };
+
+  loadAiGeneratedSessions();
+}, [userId, hasGeneratedPlan]); // Load when user or plan status changes
+  
 const formatGoalTimeForDisplay = (goalTimeString: string): string => {
   // Convert "2:00:00" to "sub-2:00" or "1:55:00" to "sub-1:55"
   const parts = goalTimeString.split(':');
@@ -274,9 +352,20 @@ const AITrainingCalendar = ({ userId = 'default' }: AITrainingCalendarProps) => 
   return rpeTargets[sessionType] ?? rpeTargets['easy']!;
 };
 
-  const getWeekData = (weekNum: number): WeekData => {
-    const paceZones = calculatePaceZones(goalTime);
+const getWeekData = (weekNum: number): WeekData => {
+  const paceZones = calculatePaceZones(goalTime);
+  
+  // 👑 ADMIN LOGIC: Keep your existing hardcoded plan logic
+  const storedUserName = localStorage.getItem('userName') || '';
+  const isAdminUser = storedUserName.toLowerCase().includes('admin') || 
+                     userId === 'default' || 
+                     userId === 'cmdhtwtil00000vg18swahirhu';
+
+  // For admin users, use existing hardcoded plan
+  if (isAdminUser) {
+    console.log(`👑 Admin user detected - using hardcoded training plan`);
     
+    // [KEEP ALL YOUR EXISTING HARDCODED PLAN LOGIC HERE]
     const weeklyPlans = {
       1: { easyDistance: 5, tempoDistance: 5, intervalDistance: 4, longDistance: 8 },
       2: { easyDistance: 6, tempoDistance: 6, intervalDistance: 5, longDistance: 10 },
@@ -293,13 +382,15 @@ const AITrainingCalendar = ({ userId = 'default' }: AITrainingCalendarProps) => 
     };
 
     const plan = weeklyPlans[weekNum as keyof typeof weeklyPlans] || weeklyPlans[1];
+    const showGymSessions = true; // Admin always shows gym sessions
+
 
 // ✅ Better approach - check by stored user name/email
-const storedUserName = localStorage.getItem('userName') || '';
-const isAdminUser = storedUserName.toLowerCase().includes('admin') || 
-                   userId === 'default' || 
-                   userId === 'cmdhtwtil00000vg18swahirhu';
-const showGymSessions = userId === null || isAdminUser;
+// const storedUserName = localStorage.getItem('userName') || '';
+// const isAdminUser = storedUserName.toLowerCase().includes('admin') || 
+//                    userId === 'default' || 
+//                    userId === 'cmdhtwtil00000vg18swahirhu';
+// const showGymSessions = userId === null || isAdminUser;
 
     const baseSchedule: { [key: string]: Session[] } = {
     Monday: [
@@ -433,7 +524,7 @@ const showGymSessions = userId === null || isAdminUser;
     }]
   };
 
-    const modifiedSchedule: { [key: string]: Session[] } = {};
+ const modifiedSchedule: { [key: string]: Session[] } = {};
     Object.keys(baseSchedule).forEach(day => {
       const daySessions = baseSchedule[day];
       if (daySessions) {
@@ -448,8 +539,112 @@ const showGymSessions = userId === null || isAdminUser;
       weekNumber: weekNum,
       weeklySchedule: modifiedSchedule
     };
+  }
+
+  // 🤖 NON-ADMIN LOGIC: Use AI-generated sessions
+  if (useAiSessions && aiGeneratedSessions.length > 0) {
+    console.log(`🤖 Non-admin user - using AI-generated sessions for week ${weekNum}`);
+    
+    // ✅ FIXED: Filter AI sessions for this specific week with proper null checks
+    const weekSessions = aiGeneratedSessions.filter((session: Session): boolean => {
+      return typeof session.week === 'number' && session.week === weekNum;
+    });
+    
+    if (weekSessions.length > 0) {
+      // ✅ FIXED: Group sessions by day with proper TypeScript handling
+      const aiSchedule: { [key: string]: Session[] } = {
+        Monday: [],
+        Tuesday: [],
+        Wednesday: [],
+        Thursday: [],
+        Friday: [],
+        Saturday: [],
+        Sunday: []
+      };
+
+      weekSessions.forEach((session: Session) => {
+        // ✅ FIXED: Proper null checking for day property
+        if (typeof session.day === 'string' && session.day.length > 0) {
+          const dayName = session.day.charAt(0).toUpperCase() + session.day.slice(1).toLowerCase();
+          if (aiSchedule[dayName]) {
+            aiSchedule[dayName].push(session);
+          }
+        }
+      });
+
+      // ✅ FIXED: Add rest days for empty days with proper TypeScript
+      Object.keys(aiSchedule).forEach((day: string) => {
+        const daySchedule = aiSchedule[day];
+        if (Array.isArray(daySchedule) && daySchedule.length === 0) {
+          aiSchedule[day] = [{ 
+            id: `${day.toLowerCase()}-rest-${weekNum}`, 
+            type: 'rest',
+            subType: 'easy'
+          }];
+        }
+      });
+
+      console.log(`✅ Using ${weekSessions.length} AI sessions for week ${weekNum}`);
+      
+      return {
+        weekNumber: weekNum,
+        weeklySchedule: aiSchedule
+      };
+    }
+  }
+
+  // 🔄 FALLBACK: Use basic hardcoded plan for non-admin users without AI sessions
+  console.log(`🔄 Fallback - using basic plan for week ${weekNum}`);
+  
+  const basicPlan = { easyDistance: 5, tempoDistance: 6, intervalDistance: 4, longDistance: 8 };
+  const basicSchedule: { [key: string]: Session[] } = {
+    Monday: [{ 
+      id: `mon-run-${weekNum}`, 
+      type: 'running' as const, 
+      subType: 'easy' as const, 
+      distance: basicPlan.easyDistance, 
+      pace: paceZones.easy, 
+      time: '17:00', 
+      warmup: '10 min easy jog',
+      mainSet: `${basicPlan.easyDistance}km easy run`,
+      cooldown: '5 min walk',
+      targetRPE: getTargetRPE('easy')
+    }],
+    Tuesday: [{ id: `tue-rest-${weekNum}`, type: 'rest' as const, subType: 'easy' as const }],
+    Wednesday: [{ 
+      id: `wed-run-${weekNum}`, 
+      type: 'running' as const, 
+      subType: 'tempo' as const, 
+      distance: basicPlan.tempoDistance, 
+      pace: paceZones.tempo, 
+      time: '18:00',
+      warmup: '15 min easy + strides',
+      mainSet: `${basicPlan.tempoDistance}km tempo run`,
+      cooldown: '10 min easy',
+      targetRPE: getTargetRPE('tempo')
+    }],
+    Thursday: [{ id: `thu-rest-${weekNum}`, type: 'rest' as const, subType: 'easy' as const }],
+    Friday: [{ id: `fri-rest-${weekNum}`, type: 'rest' as const, subType: 'easy' as const }],
+    Saturday: [{ 
+      id: `sat-run-${weekNum}`, 
+      type: 'running' as const, 
+      subType: 'long' as const, 
+      distance: basicPlan.longDistance, 
+      pace: paceZones.easy, 
+      time: '09:00',
+      warmup: '15 min easy jog',
+      mainSet: `${basicPlan.longDistance}km long run`,
+      cooldown: '10 min walk',
+      targetRPE: getTargetRPE('long')
+    }],
+    Sunday: [{ id: `sun-rest-${weekNum}`, type: 'rest' as const, subType: 'easy' as const }]
   };
 
+  return {
+    weekNumber: weekNum,
+    weeklySchedule: basicSchedule
+  };
+};
 
 
 const checkForGeneratedPlan = useCallback(async (userIdToCheck: string) => {
