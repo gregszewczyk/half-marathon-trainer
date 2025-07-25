@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Brain, Clock, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
+import useSWR from 'swr';
 
 interface PlanGenerationStatusProps {
   userId: string;
@@ -11,89 +12,65 @@ const PlanGenerationStatus = ({ userId, onPlanReady }: PlanGenerationStatusProps
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState('Checking plan status...');
   const [retryCount, setRetryCount] = useState(0);
-  
-  // Use ref to track current status for interval callback
-  const statusRef = useRef(status);
-  statusRef.current = status;
 
-  // Check plan generation status
-  const checkPlanStatus = async () => {
-    try {
-      console.log(`🔍 Checking plan status for user: ${userId}`);
-      
-      const response = await fetch(`/api/training-plan?userId=${userId}`);
-      const data = await response.json();
-      
-      if (data.planGenerated && data.sessions.length > 0) {
-        console.log('✅ Plan generation complete!');
-        setStatus('complete');
-        setMessage('Training plan ready! Loading your dashboard...');
-        setProgress(100);
-        
-        // Delay to show success state
-        setTimeout(() => {
-          onPlanReady();
-        }, 2000);
-      } else if (data.onboardingComplete) {
-        console.log('🤖 Plan still generating...');
-        setStatus('generating');
-        setMessage('AI is analyzing your goals and creating your personalized training plan...');
-        setProgress(prev => Math.min(prev + 20, 90));
-      } else {
-        console.log('❌ Onboarding not completed');
-        setStatus('error');
-        setMessage('Onboarding not completed. Please complete the setup process.');
-      }
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error('❌ Error checking plan status:', errorMessage);
+  // ✅ USE SWR for polling - eliminates duplicate requests!
+  const { data, error, mutate } = useSWR(
+    `/api/training-plan?userId=${userId}`,
+    {
+      refreshInterval: (data) => {
+        // Stop polling when complete or error
+        if (data?.planGenerated || !data?.onboardingComplete) {
+          return 0; // Stop polling
+        }
+        return 3000; // Poll every 3 seconds
+      },
+      revalidateOnFocus: false,
+      dedupingInterval: 5000, // Dedupe for 5 seconds (longer than polling interval)
+    }
+  );
+
+  // Handle SWR data changes
+  useEffect(() => {
+    if (error) {
+      console.error('❌ SWR Error checking plan status:', error);
       setStatus('error');
       setMessage('Error checking plan status. Click retry to try again.');
+      return;
     }
-  };
 
-  // ✅ FIXED: Auto-check status every 3 seconds with proper cleanup
-  useEffect(() => {
-    let isMounted = true;
-    let interval: NodeJS.Timeout | null = null;
-    
-    console.log(`🚀 Starting plan status monitoring for user: ${userId}`);
-    
-    // Initial check
-    if (isMounted) {
-      checkPlanStatus();
+    if (!data) {
+      setStatus('checking');
+      setMessage('Checking plan status...');
+      return;
     }
-    
-    // Set up interval that checks current status via ref
-    interval = setInterval(() => {
-      if (!isMounted) {
-        console.log('🛑 Component unmounted, stopping checks');
-        return;
-      }
-      
-      const currentStatus = statusRef.current;
-      console.log(`⏰ Interval check - current status: ${currentStatus}`);
-      
-      if (currentStatus === 'generating' || currentStatus === 'checking') {
-        checkPlanStatus();
-      } else if (currentStatus === 'complete' || currentStatus === 'error') {
-        console.log(`🛑 Stopping interval - final status: ${currentStatus}`);
-        if (interval) {
-          clearInterval(interval);
-          interval = null;
-        }
-      }
-    }, 3000);
 
-    return () => {
-      console.log('🧹 Cleaning up plan status interval');
-      isMounted = false;
-      if (interval) {
-        clearInterval(interval);
-        interval = null;
-      }
-    };
-  }, [userId]); // ✅ ONLY userId dependency - no status!
+    console.log(`📊 SWR Plan status for ${userId}:`, {
+      planGenerated: data.planGenerated,
+      onboardingComplete: data.onboardingComplete,
+      sessionsCount: data.sessions?.length || 0
+    });
+
+    if (data.planGenerated && data.sessions?.length > 0) {
+      console.log('✅ Plan generation complete!');
+      setStatus('complete');
+      setMessage('Training plan ready! Loading your dashboard...');
+      setProgress(100);
+      
+      // Delay to show success state
+      setTimeout(() => {
+        onPlanReady();
+      }, 2000);
+    } else if (data.onboardingComplete) {
+      console.log('🤖 Plan still generating...');
+      setStatus('generating');
+      setMessage('AI is analyzing your goals and creating your personalized training plan...');
+      setProgress(prev => Math.min(prev + 20, 90));
+    } else {
+      console.log('❌ Onboarding not completed');
+      setStatus('error');
+      setMessage('Onboarding not completed. Please complete the setup process.');
+    }
+  }, [data, error, userId, onPlanReady]);
 
   // Manual retry function
   const handleRetry = async () => {
@@ -118,6 +95,8 @@ const PlanGenerationStatus = ({ userId, onPlanReady }: PlanGenerationStatusProps
         setStatus('generating');
         setMessage('Plan generation restarted. Please wait...');
         setProgress(30);
+        // Trigger SWR to refetch
+        mutate();
       } else {
         setStatus('error');
         setMessage('Failed to restart plan generation. Please contact support.');
