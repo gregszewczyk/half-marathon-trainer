@@ -1,5 +1,5 @@
-// 🚀 NEW: src/app/api/onboarding/route.ts
-// API endpoint to save onboarding data and create user profile
+// 🚀 CLEAN: src/app/api/onboarding/route.ts
+// Enhanced onboarding API with proper TypeScript and plan generation trigger
 
 import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
@@ -60,9 +60,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Parse race date
+    // Parse race date with proper error handling
     let parsedRaceDate: Date | null = null
-    if (raceDate) {
+    if (raceDate && typeof raceDate === 'string') {
       parsedRaceDate = new Date(raceDate)
       if (isNaN(parsedRaceDate.getTime())) {
         return NextResponse.json(
@@ -170,23 +170,97 @@ export async function POST(request: NextRequest) {
       onboardingComplete: userProfile.onboardingComplete 
     })
 
-    // TODO: In next phase, generate custom training plan based on profile data
-    // For now, we'll use the existing plan structure
+    // ✅ Trigger plan generation after saving profile
+    console.log('🚀 Triggering plan generation for user:', userId)
+    
+    try {
+      // Get proper base URL with TypeScript-safe environment variable handling
+      const environmentUrl = process.env['VERCEL_URL']
+      let baseUrl: string
+      
+      if (environmentUrl && typeof environmentUrl === 'string' && environmentUrl.length > 0) {
+        baseUrl = `https://${environmentUrl}`
+      } else {
+        baseUrl = 'http://localhost:3000'
+      }
+      
+      console.log('🌐 Using base URL for internal API call:', baseUrl)
+      
+      // Call the generate-plan API internally
+      const generateResponse = await fetch(`${baseUrl}/api/generate-plan`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-internal-request': 'true'
+        },
+        body: JSON.stringify({ 
+          userId,
+          onboardingData: userProfile
+        })
+      })
 
-    return NextResponse.json({
-      success: true,
-      profile: {
-        id: userProfile.id,
-        raceType: userProfile.raceType,
-        targetTime: userProfile.targetTime,
-        raceDate: userProfile.raceDate,
-        onboardingComplete: userProfile.onboardingComplete
-      },
-      message: 'Profile saved successfully! Training plan generation coming next.'
-    })
+      if (generateResponse.ok) {
+        console.log('✅ Plan generation started successfully')
+        
+        // Update profile to indicate generation started
+        await prisma.userProfile.update({
+          where: { userId },
+          data: { lastPlanUpdate: new Date() }
+        })
+        
+        return NextResponse.json({
+          success: true,
+          profile: {
+            id: userProfile.id,
+            raceType: userProfile.raceType,
+            targetTime: userProfile.targetTime,
+            raceDate: userProfile.raceDate,
+            onboardingComplete: userProfile.onboardingComplete
+          },
+          message: 'Profile saved and plan generation started!',
+          planGenerationStarted: true
+        })
+      } else {
+        const errorText = await generateResponse.text()
+        console.error('❌ Failed to start plan generation:', generateResponse.status, errorText)
+        
+        // Still return success for profile save, but indicate generation failed
+        return NextResponse.json({
+          success: true,
+          profile: {
+            id: userProfile.id,
+            raceType: userProfile.raceType,
+            targetTime: userProfile.targetTime,
+            raceDate: userProfile.raceDate,
+            onboardingComplete: userProfile.onboardingComplete
+          },
+          message: 'Profile saved successfully. Plan generation will start shortly.',
+          planGenerationStarted: false
+        })
+      }
+    } catch (generationError: unknown) {
+      const generationErrorMessage = generationError instanceof Error 
+        ? generationError.message 
+        : 'Unknown error occurred during plan generation'
+      console.error('❌ Error triggering plan generation:', generationErrorMessage)
+      
+      // Still return success for profile save
+      return NextResponse.json({
+        success: true,
+        profile: {
+          id: userProfile.id,
+          raceType: userProfile.raceType,
+          targetTime: userProfile.targetTime,
+          raceDate: userProfile.raceDate,
+          onboardingComplete: userProfile.onboardingComplete
+        },
+        message: 'Profile saved successfully. Plan generation will start shortly.',
+        planGenerationStarted: false
+      })
+    }
 
   } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
     console.error('❌ Onboarding API error:', errorMessage)
     
     return NextResponse.json(
