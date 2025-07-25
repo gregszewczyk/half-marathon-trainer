@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Brain, Clock, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
 
 interface PlanGenerationStatusProps {
@@ -11,14 +11,21 @@ const PlanGenerationStatus = ({ userId, onPlanReady }: PlanGenerationStatusProps
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState('Checking plan status...');
   const [retryCount, setRetryCount] = useState(0);
+  
+  // Use ref to track current status for interval callback
+  const statusRef = useRef(status);
+  statusRef.current = status;
 
   // Check plan generation status
   const checkPlanStatus = async () => {
     try {
+      console.log(`🔍 Checking plan status for user: ${userId}`);
+      
       const response = await fetch(`/api/training-plan?userId=${userId}`);
       const data = await response.json();
       
       if (data.planGenerated && data.sessions.length > 0) {
+        console.log('✅ Plan generation complete!');
         setStatus('complete');
         setMessage('Training plan ready! Loading your dashboard...');
         setProgress(100);
@@ -28,35 +35,51 @@ const PlanGenerationStatus = ({ userId, onPlanReady }: PlanGenerationStatusProps
           onPlanReady();
         }, 2000);
       } else if (data.onboardingComplete) {
+        console.log('🤖 Plan still generating...');
         setStatus('generating');
         setMessage('AI is analyzing your goals and creating your personalized training plan...');
-        setProgress(Math.min(progress + 20, 90));
+        setProgress(prev => Math.min(prev + 20, 90));
       } else {
+        console.log('❌ Onboarding not completed');
         setStatus('error');
         setMessage('Onboarding not completed. Please complete the setup process.');
       }
-    } catch (error) {
-      console.error('Error checking plan status:', error);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('❌ Error checking plan status:', errorMessage);
       setStatus('error');
       setMessage('Error checking plan status. Click retry to try again.');
     }
   };
 
-  // Auto-check status every 3 seconds
+  // ✅ FIXED: Auto-check status every 3 seconds - NO status dependency
   useEffect(() => {
+    console.log(`🚀 Starting plan status monitoring for user: ${userId}`);
+    
+    // Initial check
     checkPlanStatus();
     
+    // Set up interval that checks current status via ref
     const interval = setInterval(() => {
-      if (status === 'generating' || status === 'checking') {
+      const currentStatus = statusRef.current;
+      console.log(`⏰ Interval check - current status: ${currentStatus}`);
+      
+      if (currentStatus === 'generating' || currentStatus === 'checking') {
         checkPlanStatus();
+      } else {
+        console.log(`🛑 Stopping interval - status is: ${currentStatus}`);
       }
     }, 3000);
 
-    return () => clearInterval(interval);
-  }, [userId, status]);
+    return () => {
+      console.log('🧹 Cleaning up plan status interval');
+      clearInterval(interval);
+    };
+  }, [userId]); // ✅ ONLY userId dependency - no status!
 
   // Manual retry function
   const handleRetry = async () => {
+    console.log(`🔄 Manual retry attempt ${retryCount + 1}`);
     setRetryCount(prev => prev + 1);
     setStatus('checking');
     setMessage('Retrying plan generation...');
@@ -81,8 +104,9 @@ const PlanGenerationStatus = ({ userId, onPlanReady }: PlanGenerationStatusProps
         setStatus('error');
         setMessage('Failed to restart plan generation. Please contact support.');
       }
-    } catch (error) {
-      console.error('Retry error:', error);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('❌ Retry error:', errorMessage);
       setStatus('error');
       setMessage('Network error. Please check your connection and try again.');
     }
