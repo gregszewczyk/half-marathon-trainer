@@ -68,45 +68,45 @@ export default function Dashboard() {
       if (!userId) return;
 
       // Admin bypass - go straight to hardcoded plan
-      const isAdminUser = userId === 'cmdhtwtil00000vg18swahirhu' || 
-                         userName?.toLowerCase().includes('admin') ||
-                         userId === 'default';
+const isAdminUser = userId === 'default' || 
+                   userId === 'cmdhtwtil00000vg18swahirhu' ||
+                   userName?.toLowerCase().includes('admin');
       
-      if (isAdminUser) {
-        console.log(`👑 Admin user detected: ${userId} - bypassing plan generation`);
-        setPlanStatus({
-          planGenerated: true, // Pretend plan is generated to show calendar
-          onboardingComplete: true,
-          checking: false,
-          error: null
-        });
-        return;
-      }
+      // if (isAdminUser) {
+      //   console.log(`👑 Admin user detected: ${userId} - bypassing plan generation`);
+      //   setPlanStatus({
+      //     planGenerated: true, // Pretend plan is generated to show calendar
+      //     onboardingComplete: true,
+      //     checking: false,
+      //     error: null
+      //   });
+      //   return;
+      // }
 
       try {
-        console.log(`🔍 Checking plan status for user: ${userId}`);
-        
-        const response = await fetch(`/api/training-plan?userId=${userId}`);
-        
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        
-        const data = await response.json();
-        
-        setPlanStatus({
-          planGenerated: data.planGenerated || false,
-          onboardingComplete: data.onboardingComplete || false,
-          checking: false,
-          error: null
-        });
-
-        console.log(`📊 Plan status for ${userId}:`, {
-          planGenerated: data.planGenerated,
-          onboardingComplete: data.onboardingComplete,
-          sessionsCount: data.sessions?.length || 0
-        });
-
+  console.log(`🔍 Checking plan status for user: ${userId}`);
+  
+  const response = await fetch(`/api/training-plan?userId=${userId}`);
+  
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+  
+  const data = await response.json();
+  
+  // Check if user has existing sessions (skip generation)
+  const hasExistingSessions = data.sessions && data.sessions.length > 0;
+  
+  if (isAdminUser || hasExistingSessions) {
+    console.log(`👑 ${isAdminUser ? 'Admin user' : 'User with existing plan'} - bypassing generation`);
+    setPlanStatus({
+      planGenerated: true,
+      onboardingComplete: true,
+      checking: false,
+      error: null
+    });
+    return;
+  }
       } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         console.error('❌ Error checking plan status:', errorMessage);
