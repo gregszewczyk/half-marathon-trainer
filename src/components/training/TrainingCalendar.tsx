@@ -928,20 +928,26 @@ Keep it concise and motivational - this should make them feel good about their t
                             <div>
                               <span>Target RPE: {session.targetRPE.min}-{session.targetRPE.max}/10</span>
                             </div>
-                            <div className="flex gap-0.5">
-                              {[...Array(10)].map((_, i) => (
-                                <div
-                                  key={i}
-                                  className={`w-1.5 h-1.5 rounded-full ${
-                                    session.targetRPE && i + 1 >= session.targetRPE.min && i + 1 <= session.targetRPE.max
-                                      ? 'bg-cyan-400'
-                                      : 'bg-gray-600'
-                                  }`}
-                                />
-                              ))}
-                              <span className="ml-2 text-xs opacity-60">
-                                {[...Array(10)].map((_, i) => (i + 1).toString()).join(' ')}
-                              </span>
+                            <div className="space-y-1">
+                              <div className="flex gap-0.5">
+                                {[...Array(10)].map((_, i) => (
+                                  <div
+                                    key={i}
+                                    className={`w-1.5 h-1.5 rounded-full ${
+                                      session.targetRPE && i + 1 >= session.targetRPE.min && i + 1 <= session.targetRPE.max
+                                        ? 'bg-cyan-400'
+                                        : 'bg-gray-600'
+                                    }`}
+                                  />
+                                ))}
+                              </div>
+                              <div className="flex gap-0.5 text-xs opacity-60">
+                                {[...Array(10)].map((_, i) => (
+                                  <span key={i} className="w-1.5 text-center text-xs leading-none">
+                                    {i + 1}
+                                  </span>
+                                ))}
+                              </div>
                             </div>
                             {session.targetRPE?.description && (
                               <div className="text-xs opacity-60 italic">
