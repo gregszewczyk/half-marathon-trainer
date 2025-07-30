@@ -659,8 +659,14 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
         `🔧 Fallback Used: ${stats.fallbackUsed}`
       );
 
-      // Refresh the sessions to show updated warm-ups/cool-downs
-      window.location.reload();
+      // Clear cache so next load gets fresh data
+      const cacheKey = `sessions-${userId}`;
+      _sessionCache.delete(cacheKey);
+      
+      // Reload page after brief delay to show success message
+      setTimeout(() => {
+        window.location.reload();
+      }, 2000);
 
     } catch (error) {
       console.error('❌ Error regenerating warm-ups:', error);
