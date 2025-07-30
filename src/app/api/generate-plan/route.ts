@@ -6,6 +6,32 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+// Calculate training weeks based on race date
+function calculateTrainingWeeks(raceDate?: string): number {
+  if (!raceDate) {
+    // If no race date provided, use default 12 weeks
+    return 12;
+  }
+  
+  const today = new Date();
+  const race = new Date(raceDate);
+  const timeDiff = race.getTime() - today.getTime();
+  const weeksDiff = Math.ceil(timeDiff / (1000 * 3600 * 24 * 7));
+  
+  // Ensure reasonable bounds: minimum 4 weeks, maximum 20 weeks
+  if (weeksDiff < 4) {
+    console.log(`⚠️ Race date too soon (${weeksDiff} weeks), using minimum 4 weeks`);
+    return 4;
+  }
+  if (weeksDiff > 20) {
+    console.log(`⚠️ Race date too far (${weeksDiff} weeks), using maximum 20 weeks`);
+    return 20;
+  }
+  
+  console.log(`📅 Calculated ${weeksDiff} weeks until race date: ${raceDate}`);
+  return weeksDiff;
+}
+
 // Clean interface matching exact Prisma schema
 interface GeneratedSessionCreate {
   userId: string;
@@ -71,6 +97,10 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`🤖 Generating AI-powered plan for user ${userId}`);
+    
+    // Calculate training weeks based on race date
+    const totalWeeks = calculateTrainingWeeks(onboardingData.raceDate);
+    console.log(`📊 Plan will be ${totalWeeks} weeks long`);
 
     // Check if plan is already being generated or exists
     const userProfile = await prisma.userProfile.findUnique({
@@ -163,13 +193,13 @@ async function generateAITrainingPlan(userId: string, data: OnboardingData): Pro
     console.log(`🏃 AI pace zones: ${paceZones.easy} - ${paceZones.tempo} - ${paceZones.interval}`);
     
     // Step 3: Create AI-optimized weekly progression
-    const weeklyProgression = await generateAIProgression(data, aiAnalysis);
+    const weeklyProgression = await generateAIProgression(data, aiAnalysis, totalWeeks);
     console.log(`📈 AI progression: ${weeklyProgression.totalWeeks} weeks`);
     
     // Step 4: Generate sessions with AI reasoning
     const sessions: GeneratedSessionCreate[] = [];
     
-    for (let week = 1; week <= 12; week++) {
+    for (let week = 1; week <= totalWeeks; week++) {
       console.log(`🗓️ Generating AI sessions for week ${week}`);
       
       const weekPlan = weeklyProgression.weeks[week - 1];
@@ -362,10 +392,10 @@ Respond with JSON only:
     return calculateStaticPaceZones(data.raceType, data.targetTime);
   }
 }
-async function generateAIProgression(data: OnboardingData, analysis: any): Promise<any> {
+async function generateAIProgression(data: OnboardingData, analysis: any, totalWeeks: number): Promise<any> {
   console.log('📈 STARTING AI PROGRESSION');
   
-  const prompt = `Create a 12-week training progression for this runner:
+  const prompt = `Create a ${totalWeeks}-week training progression for this runner:
 
 PROFILE:
 - Goal: ${data.raceType} in ${data.targetTime}
@@ -375,7 +405,7 @@ PROFILE:
 - Injury Risk: ${analysis.injuryRisk}
 - Other Activities: ${data.otherWorkouts.join(', ')}
 
-Create a progressive 12-week plan with weekly mileage and session types.
+Create a progressive ${totalWeeks}-week plan with weekly mileage and session types.
 Consider: base building → build phase → peak phase → taper
 
 CRITICAL BEGINNER REQUIREMENTS:
@@ -386,7 +416,7 @@ CRITICAL BEGINNER REQUIREMENTS:
 
 Respond with JSON only:
 {
-  "totalWeeks": 12,
+  "totalWeeks": ${totalWeeks},
   "weeks": [
     {
       "week": 1,
@@ -434,7 +464,7 @@ Respond with JSON only:
       const jsonMatch = aiText.match(/\{[\s\S]*\}/);
       const progression = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
       
-      if (progression && progression.weeks && progression.weeks.length === 12) {
+      if (progression && progression.weeks && progression.weeks.length === totalWeeks) {
         return progression;
       }
     } catch (parseError) {
@@ -443,28 +473,32 @@ Respond with JSON only:
     
     // Fallback to basic progression
     return {
-      totalWeeks: 12,
-      weeks: Array.from({ length: 12 }, (_, i) => ({
+      totalWeeks: totalWeeks,
+      weeks: Array.from({ length: totalWeeks }, (_, i) => ({
         week: i + 1,
-        phase: i < 4 ? 'base' : i < 8 ? 'build' : i < 10 ? 'peak' : 'taper',
-        easyMiles: 4 + i,
-        tempoMiles: 3 + Math.floor(i / 2),
-        intervalMiles: 2 + Math.floor(i / 3),
-        longMiles: 8 + i
+        phase: i < Math.floor(totalWeeks * 0.33) ? 'base' : 
+               i < Math.floor(totalWeeks * 0.67) ? 'build' : 
+               i < Math.floor(totalWeeks * 0.83) ? 'peak' : 'taper',
+        easyMiles: 4 + i * (8 / totalWeeks),
+        tempoMiles: 3 + Math.floor(i * (6 / totalWeeks)),
+        intervalMiles: 2 + Math.floor(i * (4 / totalWeeks)),
+        longMiles: 8 + i * (8 / totalWeeks)
       }))
     };
   } catch (fetchError) {
     console.error('Progression fetch error:', fetchError);
     // Return fallback progression
     return {
-      totalWeeks: 12,
-      weeks: Array.from({ length: 12 }, (_, i) => ({
+      totalWeeks: totalWeeks,
+      weeks: Array.from({ length: totalWeeks }, (_, i) => ({
         week: i + 1,
-        phase: i < 4 ? 'base' : i < 8 ? 'build' : i < 10 ? 'peak' : 'taper',
-        easyMiles: 4 + i,
-        tempoMiles: 3 + Math.floor(i / 2),
-        intervalMiles: 2 + Math.floor(i / 3),
-        longMiles: 8 + i
+        phase: i < Math.floor(totalWeeks * 0.33) ? 'base' : 
+               i < Math.floor(totalWeeks * 0.67) ? 'build' : 
+               i < Math.floor(totalWeeks * 0.83) ? 'peak' : 'taper',
+        easyMiles: 4 + i * (8 / totalWeeks),
+        tempoMiles: 3 + Math.floor(i * (6 / totalWeeks)),
+        intervalMiles: 2 + Math.floor(i * (4 / totalWeeks)),
+        longMiles: 8 + i * (8 / totalWeeks)
       }))
     };
   }
@@ -657,8 +691,11 @@ function generateStaticTrainingPlan(userId: string, data: OnboardingData): Gener
   // Calculate pace zones
   const paceZones = calculateStaticPaceZones(data.raceType, data.targetTime);
   
-  // Generate 12 weeks
-  for (let week = 1; week <= 12; week++) {
+  // Generate dynamic weeks based on race date
+  const totalWeeks = calculateTrainingWeeks(data.raceDate);
+  console.log(`📊 Static plan will be ${totalWeeks} weeks long`);
+  
+  for (let week = 1; week <= totalWeeks; week++) {
     const weekSessions = generateStaticWeekSessions(userId, week, data, paceZones);
     sessions.push(...weekSessions);
   }
