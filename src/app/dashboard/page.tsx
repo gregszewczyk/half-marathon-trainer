@@ -371,75 +371,51 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Training Stats */}
-      <div className="px-6 py-8">
+      {/* Compact Training Stats */}
+      <div className="px-6 py-3 bg-gray-800/30 border-t border-gray-700/50">
         <div className="max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <div className="flex flex-wrap items-center justify-between gap-4 text-sm">
             
-            {/* Completion Percentage */}
-            <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-medium text-gray-400">Week Progress</h3>
-                <div className="text-2xl">📈</div>
-              </div>
+            {/* Compact Stats */}
+            <div className="flex items-center gap-2">
+              <span className="text-gray-400">Week:</span>
               {trainingStats.loading ? (
-                <div className="w-6 h-6 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+                <div className="w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
               ) : (
-                <div className="text-3xl font-bold text-white">{trainingStats.completionPercentage}%</div>
+                <span className="font-medium text-white">{trainingStats.currentWeek}/{trainingStats.totalWeeks}</span>
               )}
-              <p className="text-sm text-gray-400 mt-1">Sessions completed this week</p>
             </div>
-
-            {/* Current Week */}
-            <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-medium text-gray-400">Training Week</h3>
-                <div className="text-2xl">📅</div>
-              </div>
-              <div className="text-3xl font-bold text-white">{trainingStats.currentWeek}/{trainingStats.totalWeeks}</div>
-              <p className="text-sm text-gray-400 mt-1">Current training week</p>
-            </div>
-
-            {/* Total Sessions */}
-            <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-medium text-gray-400">Total Sessions</h3>
-                <div className="text-2xl">🏃‍♂️</div>
-              </div>
+            
+            <div className="flex items-center gap-2">
+              <span className="text-gray-400">Progress:</span>
               {trainingStats.loading ? (
-                <div className="w-6 h-6 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+                <div className="w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
               ) : (
-                <div className="text-3xl font-bold text-white">{trainingStats.completedSessions}/{trainingStats.totalSessions}</div>
+                <span className="font-medium text-cyan-400">{trainingStats.completionPercentage}%</span>
               )}
-              <p className="text-sm text-gray-400 mt-1">Sessions completed overall</p>
             </div>
-
-            {/* Plan Type */}
-            <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-medium text-gray-400">Plan Type</h3>
-                <div className="text-2xl">🤖</div>
-              </div>
-              <div className="text-lg font-bold text-cyan-400">AI Custom</div>
-              <p className="text-sm text-gray-400 mt-1">Personalized for your goals</p>
+            
+            <div className="flex items-center gap-2">
+              <span className="text-gray-400">Sessions:</span>
+              {trainingStats.loading ? (
+                <div className="w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <span className="font-medium text-white">{trainingStats.completedSessions}/{trainingStats.totalSessions}</span>
+              )}
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <span className="text-gray-400">Plan:</span>
+              <span className="font-medium text-cyan-400">AI Custom</span>
             </div>
 
           </div>
+        </div>
+      </div>
 
-          <div className="mb-6 p-4 bg-green-900/20 border border-green-500/30 rounded-lg">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
-                <span className="text-sm font-bold text-black">🤖</span>
-              </div>
-              <div>
-                <h3 className="font-semibold text-green-300">Training Plan Active!</h3>
-                <p className="text-sm text-green-200 mt-1">
-                  Your training plan has been personalized for your half-marathon goals. The AI will continue to adapt your sessions based on your feedback and performance.
-                </p>
-              </div>
-            </div>
-          </div>
-
+      {/* Main Content - Training Calendar */}
+      <div className="px-6 py-6">
+        <div className="max-w-7xl mx-auto">
           {/* 🔧 FIXED: Use memoized session data to prevent TrainingCalendar re-renders */}
           <AITrainingCalendar 
             userId={userId} 
