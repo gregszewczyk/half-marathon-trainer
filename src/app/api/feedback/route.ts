@@ -6,6 +6,118 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+// 🚀 NEW: Weekly completion detection and AI analysis trigger
+async function checkWeekCompletion(userId: string, weekNumber: number) {
+  try {
+    console.log(`🔍 Checking week ${weekNumber} completion for user ${userId}`);
+    
+    // Get all sessions for the week
+    const weekSessions = await prisma.generatedSession.findMany({
+      where: { 
+        userId,
+        week: weekNumber,
+        sessionType: 'RUNNING' // Only check running sessions for completion
+      },
+      select: {
+        id: true,
+        dayOfWeek: true,
+        sessionType: true,
+        sessionSubType: true
+      }
+    });
+    
+    if (weekSessions.length === 0) {
+      console.log(`⚠️ No sessions found for week ${weekNumber}`);
+      return;
+    }
+    
+    // Get feedback for all running sessions in the week
+    const sessionIds = weekSessions.map(s => 
+      `${s.dayOfWeek.toLowerCase().slice(0, 3)}-run-${weekNumber}`
+    );
+    
+    const completedFeedback = await prisma.sessionFeedback.findMany({
+      where: {
+        userId,
+        week: weekNumber,
+        sessionId: { in: sessionIds },
+        completed: 'yes'
+      }
+    });
+    
+    console.log(`📊 Week ${weekNumber}: ${completedFeedback.length}/${sessionIds.length} running sessions completed`);
+    
+    // If all running sessions are completed, trigger AI analysis
+    if (completedFeedback.length === sessionIds.length && completedFeedback.length >= 3) {
+      console.log(`🎉 Week ${weekNumber} completed! Triggering AI analysis...`);
+      await triggerWeeklyAIAnalysis(userId, weekNumber, completedFeedback);
+    }
+    
+  } catch (error) {
+    console.error('❌ Error checking week completion:', error);
+  }
+}
+
+// 🚀 NEW: Trigger weekly AI analysis 
+async function triggerWeeklyAIAnalysis(userId: string, completedWeek: number, weekFeedback: any[]) {
+  try {
+    // Calculate week metrics
+    const completionRate = 1.0; // Since we only call this when week is complete
+    const averageRPE = weekFeedback.reduce((sum, f) => sum + (f.rpe || 5), 0) / weekFeedback.length;
+    const averageDifficulty = weekFeedback.reduce((sum, f) => sum + (f.difficulty || 5), 0) / weekFeedback.length;
+    
+    const weekMetrics = {
+      completionRate,
+      averageRPE,
+      averageDifficulty,
+      totalSessions: weekFeedback.length,
+      comments: weekFeedback.map(f => f.comments).filter(Boolean)
+    };
+    
+    // Call proactive week analysis API
+    const analysisResponse = await fetch('http://localhost:3000/api/ai/proactive-week-analysis', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId,
+        completedWeek,
+        upcomingWeek: completedWeek + 1,
+        weekFeedback,
+        weekMetrics,
+        goalTime: '1:50:00',
+        currentPhase: completedWeek <= 4 ? 'Base building' : 
+                     completedWeek <= 8 ? 'Build phase' : 
+                     completedWeek <= 10 ? 'Peak phase' : 'Taper',
+        weeksRemaining: 12 - completedWeek
+      })
+    });
+    
+    if (analysisResponse.ok) {
+      const analysis = await analysisResponse.json();
+      console.log(`✅ AI analysis completed for week ${completedWeek}:`, analysis);
+      
+      // Store weekly analysis in user profile for retrieval
+      await prisma.userProfile.update({
+        where: { userId },
+        data: {
+          weeklyAnalysis: JSON.stringify({
+            completedWeek,
+            analysis: analysis.weekAnalysis,
+            generatedAt: new Date().toISOString()
+          })
+        }
+      });
+      
+      console.log(`💾 Stored weekly analysis for week ${completedWeek}`);
+    } else {
+      console.error('❌ AI analysis API failed:', analysisResponse.status);
+    }
+    
+  } catch (error) {
+    console.error('❌ Error triggering AI analysis:', error);
+  }
+}
+
 // GET - Fetch feedback for a user
 export async function GET(request: NextRequest) {
   try {
@@ -145,7 +257,7 @@ export async function POST(request: NextRequest) {
       console.log('✅ Updated feedback for session:', sessionId);
     } else {
       // Create new feedback
-      console.log('📝 Creating new feedback for:', sessionId);
+      console.log('📝 Creating new feedback for sessionId:', sessionId);
       
       await prisma.sessionFeedback.create({
         data: {
@@ -171,6 +283,9 @@ export async function POST(request: NextRequest) {
       
       console.log('✅ Created new feedback for session:', sessionId);
     }
+
+    // 🚀 NEW: Check if week is completed after feedback submission
+    await checkWeekCompletion(userId, weekNumber ? parseInt(weekNumber) : 1);
 
     return NextResponse.json({
       success: true,

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 interface PlanGenerationStatusProps {
   userId: string;
@@ -10,6 +10,7 @@ const PlanGenerationStatus = ({ userId, onPlanReady }: PlanGenerationStatusProps
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState('Checking plan status...');
   const [hasTriggeredGeneration, setHasTriggeredGeneration] = useState(false);
+  const isGenerating = useRef(false);
 
   // Simple check plan status function
   const checkPlanStatus = async () => {
@@ -31,6 +32,7 @@ const PlanGenerationStatus = ({ userId, onPlanReady }: PlanGenerationStatusProps
         setStatus('complete');
         setMessage('Training plan ready! Loading your dashboard...');
         setProgress(100);
+        isGenerating.current = false; // Reset the flag
         
         setTimeout(() => {
           onPlanReady();
@@ -75,6 +77,14 @@ const PlanGenerationStatus = ({ userId, onPlanReady }: PlanGenerationStatusProps
 
   // Trigger plan generation - called only once
   const triggerPlanGeneration = async () => {
+    // Prevent multiple concurrent calls
+    if (isGenerating.current) {
+      console.log('⚠️ Plan generation already in progress - skipping');
+      return;
+    }
+    
+    isGenerating.current = true;
+    
     try {
       console.log('🤖 Starting plan generation...');
       setStatus('generating');
@@ -116,6 +126,7 @@ const PlanGenerationStatus = ({ userId, onPlanReady }: PlanGenerationStatusProps
         setStatus('error');
         setMessage('Failed to start plan generation. Please try again.');
         setHasTriggeredGeneration(false); // Reset to allow retry
+        isGenerating.current = false;
       }
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -123,6 +134,7 @@ const PlanGenerationStatus = ({ userId, onPlanReady }: PlanGenerationStatusProps
       setStatus('error');
       setMessage('Network error. Please check your connection.');
       setHasTriggeredGeneration(false); // Reset to allow retry
+      isGenerating.current = false;
     }
   };
 

@@ -64,12 +64,10 @@ export async function GET() {
         })
       : 0;
 
-    // Get AI adjustments count (only if trainingPlan exists)
-    const aiAdjustmentsCount = trainingPlan 
-      ? await prisma.aIAdjustment.count({
-          where: { trainingPlanId: trainingPlan.id }
-        })
-      : 0;
+    // Get AI adjustments count for user
+    const aiAdjustmentsCount = await prisma.aIAdjustment.count({
+      where: { userId: 'default_user' }
+    });
 
     return NextResponse.json({ 
       setupComplete: !!trainingPlan,

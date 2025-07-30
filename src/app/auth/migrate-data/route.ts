@@ -65,10 +65,7 @@ export async function POST(request: NextRequest) {
     // Migrate all existing session feedback to admin user
     const existingFeedback = await prisma.sessionFeedback.findMany({
       where: { 
-        OR: [
-          { userId: null },
-          { userId: 'default' }
-        ]
+        userId: 'default' // Only migrate 'default' user data
       }
     });
 

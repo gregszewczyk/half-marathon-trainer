@@ -199,13 +199,13 @@ const OTHER_WORKOUTS = [
 ]
 
 const CLUB_SCHEDULE_OPTIONS = [
-  'Monday 5:00 AM', 'Monday 6:00 PM',
-  'Tuesday 5:00 AM', 'Tuesday 6:00 PM',
-  'Wednesday 5:00 AM', 'Wednesday 6:00 PM',
-  'Thursday 5:00 AM', 'Thursday 6:00 PM',
-  'Friday 5:00 AM', 'Friday 6:00 PM',
-  'Saturday 8:00 AM', 'Saturday 6:00 PM',
-  'Sunday 8:00 AM', 'Sunday 6:00 PM'
+  'Monday 6:00 AM', 'Monday 7:00 AM', 'Monday 5:00 PM', 'Monday 6:00 PM', 'Monday 7:00 PM',
+  'Tuesday 6:00 AM', 'Tuesday 7:00 AM', 'Tuesday 5:00 PM', 'Tuesday 6:00 PM', 'Tuesday 7:00 PM',
+  'Wednesday 6:00 AM', 'Wednesday 7:00 AM', 'Wednesday 5:00 PM', 'Wednesday 6:00 PM', 'Wednesday 7:00 PM',
+  'Thursday 6:00 AM', 'Thursday 7:00 AM', 'Thursday 5:00 PM', 'Thursday 6:00 PM', 'Thursday 7:00 PM',
+  'Friday 6:00 AM', 'Friday 7:00 AM', 'Friday 5:00 PM', 'Friday 6:00 PM', 'Friday 7:00 PM',
+  'Saturday 7:00 AM', 'Saturday 8:00 AM', 'Saturday 9:00 AM', 'Saturday 5:00 PM', 'Saturday 6:00 PM',
+  'Sunday 7:00 AM', 'Sunday 8:00 AM', 'Sunday 9:00 AM', 'Sunday 5:00 PM', 'Sunday 6:00 PM'
 ]
 
 export default function OnboardingPage() {
@@ -214,6 +214,9 @@ export default function OnboardingPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [userId, setUserId] = useState<string | null>(null)
   const [formData, setFormData] = useState<OnboardingFormData>(INITIAL_FORM_DATA)
+  const [showCustomSchedule, setShowCustomSchedule] = useState(false)
+  const [customDay, setCustomDay] = useState('Monday')
+  const [customTime, setCustomTime] = useState('7:00 AM')
 
   // Check authentication
   useEffect(() => {
@@ -227,6 +230,17 @@ export default function OnboardingPage() {
 
   const updateFormData = (updates: Partial<OnboardingFormData>) => {
     setFormData(prev => ({ ...prev, ...updates }))
+  }
+
+  const addCustomSchedule = () => {
+    const customSchedule = `${customDay} ${customTime}`
+    const current = formData.clubSchedule
+    if (!current.includes(customSchedule)) {
+      updateFormData({ clubSchedule: [...current, customSchedule] })
+    }
+    setShowCustomSchedule(false)
+    setCustomDay('Monday')
+    setCustomTime('7:00 AM')
   }
 
   const nextStep = () => {
@@ -1091,8 +1105,94 @@ export default function OnboardingPage() {
                   <div className="text-center font-medium">{schedule}</div>
                 </Card>
               ))}
+              
+              {/* Custom Time Option */}
+              <Card
+                className={`p-3 cursor-pointer transition-all border-2 border-dashed border-gray-600 hover:border-primary-400 ${
+                  showCustomSchedule ? 'ring-2 ring-primary-400 bg-primary-400/10' : 'hover:bg-gray-800/50'
+                }`}
+                onClick={() => setShowCustomSchedule(true)}
+              >
+                <div className="text-center font-medium text-gray-400">+ Add Custom Time</div>
+              </Card>
             </div>
           </div>
+
+          {/* Custom Schedule Input */}
+          {showCustomSchedule && (
+            <Card className="p-4 bg-gray-800/50">
+              <h4 className="font-medium mb-3">Add Custom Club Time</h4>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Day</label>
+                  <select 
+                    value={customDay}
+                    onChange={(e) => setCustomDay(e.target.value)}
+                    className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-sm"
+                  >
+                    <option value="Monday">Monday</option>
+                    <option value="Tuesday">Tuesday</option>
+                    <option value="Wednesday">Wednesday</option>
+                    <option value="Thursday">Thursday</option>
+                    <option value="Friday">Friday</option>
+                    <option value="Saturday">Saturday</option>
+                    <option value="Sunday">Sunday</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Time</label>
+                  <input
+                    type="text"
+                    value={customTime}
+                    onChange={(e) => setCustomTime(e.target.value)}
+                    placeholder="e.g., 7:30 AM"
+                    className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-sm"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button 
+                  onClick={addCustomSchedule}
+                  className="flex-1 py-1 text-sm"
+                >
+                  Add Time
+                </Button>
+                <Button 
+                  onClick={() => setShowCustomSchedule(false)}
+                  variant="outline"
+                  className="flex-1 py-1 text-sm"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </Card>
+          )}
+
+          {/* Selected Club Times Display */}
+          {formData.clubSchedule.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium mb-3">Selected Club Times:</label>
+              <div className="flex flex-wrap gap-2">
+                {formData.clubSchedule.map((schedule) => (
+                  <div 
+                    key={schedule}
+                    className="flex items-center gap-2 bg-primary-400/20 text-primary-300 px-3 py-1 rounded-full text-sm"
+                  >
+                    <span>{schedule}</span>
+                    <button
+                      onClick={() => {
+                        const updated = formData.clubSchedule.filter(s => s !== schedule)
+                        updateFormData({ clubSchedule: updated })
+                      }}
+                      className="text-primary-200 hover:text-white transition-colors"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <Card className="p-4">
             <div className="flex items-center space-x-3">

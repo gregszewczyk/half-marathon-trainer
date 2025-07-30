@@ -20,14 +20,12 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Proper relationship references
-  profile         UserProfile?      @relation("UserProfile")
-  trainingPlans   TrainingPlan[]    @relation("UserTrainingPlans")
-  sessionFeedback SessionFeedback[] @relation("UserSessionFeedback")
-  
-  // 🚀 NEW: Generated sessions for custom plans
-  generatedSessions GeneratedSession[] @relation("UserGeneratedSessions")
-  
-  @@map("users")
+  profile           UserProfile?      @relation("UserProfile")
+  trainingPlans     TrainingPlan[]    @relation("UserTrainingPlans")
+  sessionFeedback   SessionFeedback[] @relation("UserSessionFeedback")
+  generatedSessions GeneratedSession[] @relation("UserGeneratedSessions") // ← KEEP ONLY ONE
+
+  @@map("users") // ← KEEP ONLY ONE
 }
 
 // 🚀 ENHANCED: UserProfile with custom plan generation fields (unchanged from your current)
@@ -82,6 +80,7 @@ model UserProfile {
   planGenerated   Boolean  @default(false) // Has custom plan been generated
   lastPlanUpdate  DateTime? // When plan was last regenerated
   onboardingComplete Boolean @default(false) // Full onboarding completed
+  weeklyAnalysis  String? // JSON string storing weekly AI analysis results
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -132,8 +131,8 @@ model GeneratedSession {
   // Relationships
   user User @relation("UserGeneratedSessions", fields: [userId], references: [id], onDelete: Cascade)
   
-  // Ensure unique sessions per user/week/day combination
-  @@unique([userId, week, dayOfWeek, sessionType])
+  // Ensure unique sessions per user/week/day/type/subtype combination (allows gym + run on same day)
+  @@unique([userId, week, dayOfWeek, sessionType, sessionSubType])
   @@map("generated_sessions")
 }
 
@@ -209,4 +208,33 @@ enum FitnessLevel {
   INTERMEDIATE  // Regular runner, some race experience  
   ADVANCED      // Experienced racer, consistent training
   ELITE         // Competitive runner
+}
+
+// 🚀 NEW: Cross-week modifications for AI planning
+model CrossWeekModification {
+  id                  String   @id @default(cuid())
+  currentWeek         Int      // Week that triggered the modification
+  targetWeek          Int      // Week that was modified
+  targetDay           String   // Day that was modified
+  modificationType    String   // Type of modification
+  originalSessionData String?  // JSON of original session
+  newSessionData      String   // JSON of new session
+  explanation         String   // Why this modification was made
+  selectedAlternative Int?     // Which alternative was selected
+  appliedAt           DateTime @default(now())
+  
+  @@map("cross_week_modifications")
+}
+
+// 🚀 NEW: AI Adjustments tracking
+model AIAdjustment {
+  id        String   @id @default(cuid())
+  userId    String   // User this adjustment applies to
+  sessionId String   // Session that was adjusted
+  adjustmentType String // Type of adjustment made
+  reason    String   // Why the adjustment was made
+  data      Json     // Adjustment details
+  createdAt DateTime @default(now())
+  
+  @@map("ai_adjustments")
 }

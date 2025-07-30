@@ -7,6 +7,7 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 export async function GET(request: NextRequest) {
+  console.log('🚀 API /training-plan GET called'); // Test if API is being called
   try {
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('userId');
@@ -82,7 +83,7 @@ export async function GET(request: NextRequest) {
 
     // Convert database sessions to TrainingCalendar format
     const formattedSessions = sessions.map(session => ({
-      id: `${session.dayOfWeek.toLowerCase().slice(0, 3)}-${session.sessionType.toLowerCase()}-${session.week}`,
+      id: `${session.dayOfWeek.toLowerCase().slice(0, 3)}-${session.sessionType.toLowerCase() === 'running' ? 'run' : session.sessionType.toLowerCase()}-${session.week}`,
       type: session.sessionType.toLowerCase(),
       subType: session.sessionSubType || 'easy',
       distance: session.distance,
@@ -98,8 +99,60 @@ export async function GET(request: NextRequest) {
       originalPace: session.originalData ? (session.originalData as any).pace : undefined,
       originalDistance: session.originalData ? (session.originalData as any).distance : undefined,
       week: session.week,
-      dayOfWeek: session.dayOfWeek
+      dayOfWeek: session.dayOfWeek,
+      completed: false, // Initialize as false, will be updated below
+      completionType: null as string | null // Will store 'yes', 'partial', or 'no'
     }));
+
+    // 🚀 NEW: Fetch completion status for all sessions in single query
+    const sessionIds = formattedSessions.map(s => s.id);
+    console.log('🔍 Looking for completion data for session IDs:', sessionIds);
+    
+    const feedback = await prisma.sessionFeedback.findMany({
+      where: { 
+        userId,
+        sessionId: { in: sessionIds }
+      },
+      select: {
+        sessionId: true,
+        completed: true
+      }
+    });
+    
+    console.log('🔍 Feedback query returned:', feedback.length, 'records');
+    feedback.forEach(f => console.log(`📋 Found feedback: ${f.sessionId} -> ${f.completed}`));
+    
+    // Debug: Check what session IDs actually exist in the database
+    const allUserFeedback = await prisma.sessionFeedback.findMany({
+      where: { userId },
+      select: { sessionId: true, completed: true }
+    });
+    console.log('🔍 All feedback in DB for user:', allUserFeedback.length, 'records');
+    allUserFeedback.forEach(f => console.log(`📋 DB feedback: ${f.sessionId} -> ${f.completed}`));
+
+    // Create completion status map - ANY feedback submission means session was attempted
+    const feedbackMap = new Map(
+      feedback.filter(f => f.completed && f.completed !== '').map(f => [f.sessionId, f.completed])
+    );
+
+    // Add completion status to formatted sessions
+    formattedSessions.forEach(session => {
+      const completionType = feedbackMap.get(session.id);
+      session.completed = !!completionType; // True if any feedback exists
+      session.completionType = completionType || null; // Store the specific completion type
+    });
+
+    console.log(`📊 Added completion status: ${feedbackMap.size} completed out of ${formattedSessions.length} sessions`);
+    
+    // Debug: Log completed session IDs for verification
+    if (feedbackMap.size > 0) {
+      console.log('✅ Completed sessions:', Array.from(feedbackMap.entries()));
+      
+      // Log first few formatted sessions to verify completion status
+      formattedSessions.slice(0, 3).forEach(session => {
+        console.log(`📝 API Session ${session.id}: completed=${session.completed}, type=${session.type}`);
+      });
+    }
 
     return NextResponse.json({
       planGenerated: true,

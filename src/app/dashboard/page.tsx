@@ -1,19 +1,20 @@
-// 🚀 Updated src/app/dashboard/page.tsx
-// Dashboard with plan generation status checking - CLEAN TYPESCRIPT VERSION
+// 🔧 FIXED: Dashboard that doesn't show plan generation for existing users
+// Only shows plan generation during actual onboarding process
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import AITrainingCalendar from '@/components/training/TrainingCalendar';
 import PlanGenerationStatus from '@/components/PlanGenerationStatus';
 
-// Clean interfaces
+// Add session data to the interfaces
 interface PlanStatus {
   planGenerated: boolean;
   onboardingComplete: boolean;
   checking: boolean;
   error: string | null;
+  sessions: any[]; // 🔧 NEW: Store sessions in plan status
 }
 
 interface TrainingStats {
@@ -24,6 +25,34 @@ interface TrainingStats {
   loading: boolean;
 }
 
+// 🚀 NEW: Calculate current week based on completed weeks
+async function calculateCurrentWeek(userId: string): Promise<number> {
+  try {
+    // Check weeks 1-12 to find the current week
+    for (let week = 1; week <= 12; week++) {
+      const response = await fetch(`/api/feedback?userId=${userId}&weekNumber=${week}`);
+      if (response.ok) {
+        const data = await response.json();
+        const feedback = data.feedback || [];
+        const completedCount = feedback.filter((f: any) => f.completed && f.completed !== '').length;
+        
+        // If this week has fewer than 4 completed sessions, it's the current week
+        if (completedCount < 4) {
+          console.log(`📅 Week ${week}: ${completedCount}/4 completed - this is current week`);
+          return week;
+        }
+        console.log(`✅ Week ${week}: ${completedCount}/4 completed - moving to next week`);
+      }
+    }
+    
+    // If all weeks are complete, return week 12 (race week)
+    return 12;
+  } catch (error) {
+    console.error('❌ Error calculating current week:', error);
+    return 1; // Default to week 1 on error
+  }
+}
+
 export default function Dashboard() {
   const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
@@ -32,7 +61,8 @@ export default function Dashboard() {
     planGenerated: false,
     onboardingComplete: false,
     checking: true,
-    error: null
+    error: null,
+    sessions: [] // 🔧 NEW: Initialize empty sessions
   });
   const [trainingStats, setTrainingStats] = useState<TrainingStats>({
     completionPercentage: 0,
@@ -41,6 +71,12 @@ export default function Dashboard() {
     completedSessions: 0,
     loading: true
   });
+
+  // 🔧 FIXED: Memoize session data to prevent re-renders
+  const memoizedSessionData = useMemo(() => {
+    console.log('🔄 Dashboard memoizing session data:', planStatus.sessions.length, 'sessions');
+    return planStatus.sessions;
+  }, [planStatus.sessions.length, planStatus.planGenerated]);
 
   // Authentication check
   useEffect(() => {
@@ -62,51 +98,48 @@ export default function Dashboard() {
     checkAuth();
   }, [router]);
 
-  // Plan status check
+  // 🔧 FIXED: Plan status check that stores session data
   useEffect(() => {
     const checkPlanStatus = async () => {
       if (!userId) return;
 
-      // Admin bypass - go straight to hardcoded plan
-const isAdminUser = userId === 'default' || 
-                   userId === 'cmdhtwtil00000vg18swahirhu' ||
-                   userName?.toLowerCase().includes('admin');
-      
-      // if (isAdminUser) {
-      //   console.log(`👑 Admin user detected: ${userId} - bypassing plan generation`);
-      //   setPlanStatus({
-      //     planGenerated: true, // Pretend plan is generated to show calendar
-      //     onboardingComplete: true,
-      //     checking: false,
-      //     error: null
-      //   });
-      //   return;
-      // }
-
       try {
-  console.log(`🔍 Checking plan status for user: ${userId}`);
-  
-  const response = await fetch(`/api/training-plan?userId=${userId}`);
-  
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-  }
-  
-  const data = await response.json();
-  
-  // Check if user has existing sessions (skip generation)
-  const hasExistingSessions = data.sessions && data.sessions.length > 0;
-  
-  if (isAdminUser || hasExistingSessions) {
-    console.log(`👑 ${isAdminUser ? 'Admin user' : 'User with existing plan'} - bypassing generation`);
-    setPlanStatus({
-      planGenerated: true,
-      onboardingComplete: true,
-      checking: false,
-      error: null
-    });
-    return;
-  }
+        console.log(`🔍 Checking plan status for user: ${userId}`);
+        
+        const response = await fetch(`/api/training-plan?userId=${userId}`);
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        
+        // 🔧 NEW: Store sessions regardless of whether they exist
+        const sessions = data.sessions || [];
+        const hasExistingSessions = sessions.length > 0;
+        
+        if (hasExistingSessions) {
+          console.log(`✅ User has ${sessions.length} existing sessions - showing calendar`);
+          setPlanStatus({
+            planGenerated: true,
+            onboardingComplete: true,
+            checking: false,
+            error: null,
+            sessions: sessions // 🔧 NEW: Store the loaded sessions
+          });
+          return;
+        }
+
+        // Handle users without sessions
+        console.log(`📋 No sessions found - checking onboarding status`);
+        setPlanStatus({
+          planGenerated: false,
+          onboardingComplete: data.onboardingComplete || false,
+          checking: false,
+          error: null,
+          sessions: [] // 🔧 NEW: Empty sessions array
+        });
+
       } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         console.error('❌ Error checking plan status:', errorMessage);
@@ -115,7 +148,8 @@ const isAdminUser = userId === 'default' ||
           planGenerated: false,
           onboardingComplete: false,
           checking: false,
-          error: errorMessage
+          error: errorMessage,
+          sessions: [] // 🔧 NEW: Empty sessions on error
         });
       }
     };
@@ -133,21 +167,25 @@ const isAdminUser = userId === 'default' ||
       try {
         console.log(`📈 Loading training stats for user: ${userId}`);
         
+        // 🚀 NEW: Calculate current week based on completed weeks
+        const currentWeek = await calculateCurrentWeek(userId);
+        console.log(`📅 Calculated current week: ${currentWeek}`);
+        
         // Simple stats calculation from current week feedback
-        const response = await fetch(`/api/feedback?userId=${userId}&weekNumber=1`);
+        const response = await fetch(`/api/feedback?userId=${userId}&weekNumber=${currentWeek}`);
         
         if (response.ok) {
           const data = await response.json();
           const feedback = Array.isArray(data.feedback) ? data.feedback : [];
           
           // Calculate basic stats
-          const completedCount = feedback.filter((f: any) => f.completed === 'yes').length;
+          const completedCount = feedback.filter((f: any) => f.completed && f.completed !== '').length;
           const totalRunningSessions = 4; // Assume 4 running sessions per week
           const completionPercentage = totalRunningSessions > 0 ? Math.round((completedCount / totalRunningSessions) * 100) : 0;
           
           setTrainingStats({
             completionPercentage,
-            currentWeek: 1, // Start with week 1
+            currentWeek, // 🚀 FIXED: Use calculated current week
             totalSessions: totalRunningSessions,
             completedSessions: completedCount,
             loading: false
@@ -158,7 +196,7 @@ const isAdminUser = userId === 'default' ||
           // Set default stats if API fails
           setTrainingStats({
             completionPercentage: 0,
-            currentWeek: 1,
+            currentWeek, // 🚀 FIXED: Use calculated current week even on API failure
             totalSessions: 4,
             completedSessions: 0,
             loading: false
@@ -171,7 +209,7 @@ const isAdminUser = userId === 'default' ||
         // Set default stats on error
         setTrainingStats({
           completionPercentage: 0,
-          currentWeek: 1,
+          currentWeek: await calculateCurrentWeek(userId), // 🚀 FIXED: Calculate current week even on error
           totalSessions: 4,
           completedSessions: 0,
           loading: false
@@ -210,12 +248,20 @@ const isAdminUser = userId === 'default' ||
     );
   }
 
-  // Show plan generation status if not complete
-  if (planStatus.checking || (!planStatus.planGenerated && planStatus.onboardingComplete)) {
-    return <PlanGenerationStatus userId={userId} onPlanReady={handlePlanReady} />;
+  // Show loading while checking plan status
+  if (planStatus.checking) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-cyan-400 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-gray-300">Loading your training plan...</p>
+        </div>
+      </div>
+    );
   }
 
-  // Show onboarding redirect if not completed
+  // 🔧 FIXED: Only show plan generation if onboarding is NOT complete
+  // This means: first-time users who haven't finished onboarding yet
   if (!planStatus.onboardingComplete) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
@@ -236,6 +282,12 @@ const isAdminUser = userId === 'default' ||
         </div>
       </div>
     );
+  }
+
+  // 🔧 FIXED: Only show plan generation if onboarding is complete but NO sessions exist
+  // This handles the edge case where onboarding finished but plan generation failed
+  if (planStatus.onboardingComplete && !planStatus.planGenerated && planStatus.sessions.length === 0) {
+    return <PlanGenerationStatus userId={userId} onPlanReady={handlePlanReady} />;
   }
 
   // Show error state
@@ -356,31 +408,27 @@ const isAdminUser = userId === 'default' ||
 
           </div>
 
-          {/* Success Message - Different for Admin vs Generated Plans */}
           <div className="mb-6 p-4 bg-green-900/20 border border-green-500/30 rounded-lg">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
-                <span className="text-sm font-bold text-black">
-                  {userId === 'cmdhtwtil00000vg18swahirhu' || userName?.toLowerCase().includes('admin') || userId === 'default' ? '👑' : 'AI'}
-                </span>
+                <span className="text-sm font-bold text-black">🤖</span>
               </div>
               <div>
-                <h3 className="font-semibold text-green-300">
-                  {userId === 'cmdhtwtil00000vg18swahirhu' || userName?.toLowerCase().includes('admin') || userId === 'default' 
-                    ? 'Admin Training Plan Active!' 
-                    : 'Custom Plan Generated Successfully!'}
-                </h3>
+                <h3 className="font-semibold text-green-300">Training Plan Active!</h3>
                 <p className="text-sm text-green-200 mt-1">
-                  {userId === 'cmdhtwtil00000vg18swahirhu' || userName?.toLowerCase().includes('admin') || userId === 'default'
-                    ? 'Using your original hardcoded half-marathon plan with full AI coaching capabilities and session adjustments.'
-                    : 'Your training plan has been personalized based on your goals, experience, and schedule preferences. The AI will continue to adapt your sessions based on your feedback.'}
+                  Your training plan has been personalized for your half-marathon goals. The AI will continue to adapt your sessions based on your feedback and performance.
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Training Calendar */}
-          <AITrainingCalendar userId={userId} />
+          {/* 🔧 FIXED: Use memoized session data to prevent TrainingCalendar re-renders */}
+          <AITrainingCalendar 
+            userId={userId} 
+            sessionData={memoizedSessionData}
+            initialWeek={trainingStats.currentWeek} // 🚀 FIXED: Pass current week to calendar
+            key={`calendar-${userId}-${memoizedSessionData.length}`}
+          />
         </div>
       </div>
     </div>

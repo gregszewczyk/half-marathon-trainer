@@ -72,7 +72,26 @@ export async function POST(request: NextRequest) {
 
     console.log(`🤖 Generating AI-powered plan for user ${userId}`);
 
-    // Delete existing plan if it exists
+    // Check if plan is already being generated or exists
+    const userProfile = await prisma.userProfile.findUnique({
+      where: { userId }
+    });
+    
+    if (userProfile?.planGenerated) {
+      const existingSessionCount = await prisma.generatedSession.count({
+        where: { userId }
+      });
+      
+      console.log(`⚠️ User ${userId} already has a generated plan with ${existingSessionCount} sessions`);
+      return NextResponse.json({
+        success: true,
+        message: 'Plan already exists',
+        sessionsGenerated: existingSessionCount,
+        alreadyExists: true
+      });
+    }
+
+    // Delete any partial existing sessions if they exist
     const existingSessions = await prisma.generatedSession.findMany({
       where: { userId }
     });
@@ -198,6 +217,13 @@ ANALYSIS NEEDED:
 4. Injury Risk Factors: [assessment]
 5. Optimal Training Approach: [strategy]
 
+CRITICAL BEGINNER GUIDELINES:
+- If fitness level is "beginner" and they have no 5K PB, they should start with run/walk intervals
+- Week 1 for beginners should be 1-2km total distance with walking breaks
+- Beginners targeting 5K should follow: Week 1-2: run/walk intervals, Week 3-4: continuous 2-3k, Week 5-8: build to 5k
+- Never start beginners with their goal distance on day 1
+- Use progressive overload: increase distance by 10% each week maximum
+
 Respond with JSON only:
 {
   "fitnessLevel": "intermediate",
@@ -218,7 +244,7 @@ Respond with JSON only:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: "sonar-deep-research",
+        model: "sonar",
         messages: [
           {
             role: "user",
@@ -303,7 +329,7 @@ Respond with JSON only:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: "sonar-deep-research",
+        model: "sonar",
         messages: [
           {
             role: "user",
@@ -352,6 +378,12 @@ PROFILE:
 Create a progressive 12-week plan with weekly mileage and session types.
 Consider: base building → build phase → peak phase → taper
 
+CRITICAL BEGINNER REQUIREMENTS:
+- If fitness level is "beginner": Start Week 1 with 1-2 mile easy runs, use run/walk intervals
+- Beginners targeting 5K: Week 1-2 should be 8-10 total miles with run/walk, Week 3-4: 12-15 miles continuous short runs, Week 5-8: build to 5K distance
+- Never exceed 10% weekly mileage increase for beginners
+- Focus on time on feet rather than pace for beginners
+
 Respond with JSON only:
 {
   "totalWeeks": 12,
@@ -377,7 +409,7 @@ Respond with JSON only:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: "sonar-deep-research",
+        model: "sonar",
         messages: [
           {
             role: "user",
@@ -453,7 +485,7 @@ function generateAIWeekSessions(
   const clubDays = parseClubSchedule(data.clubSchedule);
   
   let runningSessions = 0;
-  const maxRunningSessions = Math.min(data.trainingDaysPerWeek, 5);
+  const maxRunningSessions = Math.min(data.trainingDaysPerWeek, 6); // Allow up to 6 running sessions
   
   for (const day of days) {
     // 1. Running club sessions (fixed)
@@ -473,7 +505,7 @@ function generateAIWeekSessions(
         isRunningClub: true,
         isMoveable: false,
         warmup: getWarmup(sessionType),
-        mainSet: getMainSet(sessionType, weekPlan, true),
+        mainSet: getMainSet(sessionType, weekPlan, true, data.runningClub),
         cooldown: getCooldown(sessionType),
         targetRPE: getTargetRPE(sessionType),
         aiModified: false,
@@ -510,6 +542,7 @@ function generateAIWeekSessions(
     }
     
     // 3. Additional running sessions
+    console.log(`📅 ${day}: clubSession=${!!clubSession}, runningSessions=${runningSessions}, maxRunningSessions=${maxRunningSessions}, shouldAddRunning=${shouldAddRunning(day, data)}`);
     if (!clubSession && runningSessions < maxRunningSessions && shouldAddRunning(day, data)) {
       const sessionType = getAIRunningSessionType(runningSessions, day, weekPlan, aiAnalysis);
       sessions.push({
@@ -536,7 +569,7 @@ function generateAIWeekSessions(
       runningSessions++;
     }
     
-    // 4. Cross training
+    // 4. Cross training - Yoga
     if (data.otherWorkouts.includes('yoga') && shouldAddYoga(day, week)) {
       sessions.push({
         userId,
@@ -560,9 +593,35 @@ function generateAIWeekSessions(
         planVersion: "1.0"
       });
     }
+
+    // 5. Cross training - Swimming
+    if (data.otherWorkouts.includes('swimming') && shouldAddSwimming(day, week)) {
+      sessions.push({
+        userId,
+        week,
+        dayOfWeek: day,
+        sessionType: 'CROSS_TRAINING',
+        sessionSubType: 'swimming',
+        distance: null,
+        pace: null,
+        duration: '45 min',
+        scheduledTime: getPreferredTime(data.timePreferences, 'swimming'),
+        isRunningClub: false,
+        isMoveable: true,
+        warmup: null,
+        mainSet: 'Swimming session - aerobic cross-training and recovery',
+        cooldown: null,
+        targetRPE: null,
+        aiModified: false,
+        originalData: null,
+        aiReason: null,
+        planVersion: "1.0"
+      });
+    }
     
-    // 5. Rest days
-    if (sessions.filter(s => s.dayOfWeek === day).length === 0 || data.restDayPrefs.includes(day.toLowerCase())) {
+    // 6. Rest days  
+    const restDays = (data as any).restDayPrefs || ['sunday'];
+    if (sessions.filter(s => s.dayOfWeek === day).length === 0 || restDays.includes(day.toLowerCase())) {
       sessions.push({
         userId,
         week,
@@ -623,7 +682,7 @@ function generateStaticWeekSessions(
   const clubDays = parseClubSchedule(data.clubSchedule);
   
   let runningSessions = 0;
-  const maxRunningSessions = Math.min(data.trainingDaysPerWeek, 5);
+  const maxRunningSessions = Math.min(data.trainingDaysPerWeek, 6); // Allow up to 6 running sessions
   
   for (const day of days) {
     // 1. Running club sessions (fixed)
@@ -643,7 +702,7 @@ function generateStaticWeekSessions(
         isRunningClub: true,
         isMoveable: false,
         warmup: getWarmup(sessionType),
-        mainSet: getMainSet(sessionType, weekPlan, true),
+        mainSet: getMainSet(sessionType, weekPlan, true, data.runningClub),
         cooldown: getCooldown(sessionType),
         targetRPE: getTargetRPE(sessionType),
         aiModified: false,
@@ -654,8 +713,133 @@ function generateStaticWeekSessions(
       runningSessions++;
     }
     
-    // Continue with rest of static generation logic...
-    // (Similar to existing logic but properly typed)
+    // 2. Gym sessions (if requested)
+    if (data.otherWorkouts.includes('gym') && shouldAddGym(day, data.gymDaysPerWeek || 0)) {
+      sessions.push({
+        userId,
+        week,
+        dayOfWeek: day,
+        sessionType: 'GYM',
+        sessionSubType: getGymType(day),
+        distance: null,
+        pace: null,
+        duration: '60 min',
+        scheduledTime: getPreferredTime(data.timePreferences, 'gym'),
+        isRunningClub: false,
+        isMoveable: true,
+        warmup: null,
+        mainSet: `${getGymType(day)} training session`,
+        cooldown: null,
+        targetRPE: null,
+        aiModified: false,
+        originalData: null,
+        aiReason: null,
+        planVersion: "1.0"
+      });
+    }
+    
+    // 3. Additional running sessions
+    if (!clubSession && runningSessions < maxRunningSessions && shouldAddRunning(day, data)) {
+      const sessionType = getRunningSessionType(runningSessions, day);
+      sessions.push({
+        userId,
+        week,
+        dayOfWeek: day,
+        sessionType: 'RUNNING',
+        sessionSubType: sessionType,
+        distance: getDistanceForType(sessionType, weekPlan),
+        pace: getPaceForType(sessionType, paceZones),
+        duration: null,
+        scheduledTime: getPreferredTime(data.timePreferences, 'running'),
+        isRunningClub: false,
+        isMoveable: true,
+        warmup: getWarmup(sessionType),
+        mainSet: getMainSet(sessionType, weekPlan, false),
+        cooldown: getCooldown(sessionType),
+        targetRPE: getTargetRPE(sessionType),
+        aiModified: false,
+        originalData: null,
+        aiReason: null,
+        planVersion: "1.0"
+      });
+      runningSessions++;
+    }
+
+    // 4. Cross training - Yoga
+    if (data.otherWorkouts.includes('yoga') && shouldAddYoga(day, week)) {
+      sessions.push({
+        userId,
+        week,
+        dayOfWeek: day,
+        sessionType: 'CROSS_TRAINING',
+        sessionSubType: 'yoga',
+        distance: null,
+        pace: null,
+        duration: '60 min',
+        scheduledTime: getPreferredTime(data.timePreferences, 'yoga'),
+        isRunningClub: false,
+        isMoveable: true,
+        warmup: null,
+        mainSet: 'Yoga session - flexibility and recovery focus',
+        cooldown: null,
+        targetRPE: null,
+        aiModified: false,
+        originalData: null,
+        aiReason: null,
+        planVersion: "1.0"
+      });
+    }
+
+    // 5. Cross training - Swimming
+    if (data.otherWorkouts.includes('swimming') && shouldAddSwimming(day, week)) {
+      sessions.push({
+        userId,
+        week,
+        dayOfWeek: day,
+        sessionType: 'CROSS_TRAINING',
+        sessionSubType: 'swimming',
+        distance: null,
+        pace: null,
+        duration: '45 min',
+        scheduledTime: getPreferredTime(data.timePreferences, 'swimming'),
+        isRunningClub: false,
+        isMoveable: true,
+        warmup: null,
+        mainSet: 'Swimming session - aerobic cross-training and recovery',
+        cooldown: null,
+        targetRPE: null,
+        aiModified: false,
+        originalData: null,
+        aiReason: null,
+        planVersion: "1.0"
+      });
+    }
+
+    // 6. Rest days  
+    const restDays = (data as any).restDayPrefs || ['sunday'];
+    if (sessions.filter(s => s.dayOfWeek === day).length === 0 || restDays.includes(day.toLowerCase())) {
+      sessions.push({
+        userId,
+        week,
+        dayOfWeek: day,
+        sessionType: 'REST',
+        sessionSubType: 'recovery',
+        distance: null,
+        pace: null,
+        duration: null,
+        scheduledTime: null,
+        isRunningClub: false,
+        isMoveable: false,
+        warmup: null,
+        mainSet: 'Rest and recovery day',
+        cooldown: null,
+        targetRPE: null,
+        aiModified: false,
+        originalData: null,
+        aiReason: null,
+        planVersion: "1.0"
+      });
+    }
   }
   
   return sessions;
@@ -774,8 +958,14 @@ function getAIDistanceForType(sessionType: string, weekPlan: any): number {
     }
   }
   
-  // Fallback to default values
-  return 5;
+  // Beginner-friendly fallback based on session type
+  switch (sessionType) {
+    case 'easy': return 2; // Start with 2km for beginners
+    case 'tempo': return 1.5; // Short tempo intervals for beginners
+    case 'intervals': return 1; // Very short intervals for beginners
+    case 'long': return 3; // Modest long run for beginners
+    default: return 2;
+  }
 }
 
 function getDistanceForType(sessionType: string, weekPlan: any): number {
@@ -808,19 +998,36 @@ function getWarmup(sessionType: string): string {
   }
 }
 
-function getMainSet(sessionType: string, weekPlan: any, isClub: boolean): string {
-  const clubText = isClub ? ' with running club' : '';
+function getMainSet(sessionType: string, weekPlan: any, isClub: boolean, clubName?: string): string {
+  const clubText = isClub && clubName ? ` with ${clubName}` : isClub ? ' with running club' : '';
+  
+  // Beginner-friendly distances with run/walk guidance
+  const distance = weekPlan?.[sessionType] || getAIDistanceForType(sessionType, null);
+  
   switch (sessionType) {
     case 'easy': 
-      return `${weekPlan.easy || 5}km steady at easy pace${clubText}`;
+      if (distance <= 2) {
+        return `${distance}km run/walk intervals - start with 1 min run, 1 min walk${clubText}`;
+      }
+      return `${distance}km steady at easy pace${clubText}`;
     case 'tempo': 
-      return `${Math.round((weekPlan.tempo || 5) * 0.6)}km tempo at threshold pace${clubText}`;
+      const tempoDistance = Math.round(distance * 0.6);
+      if (tempoDistance <= 1.5) {
+        return `${tempoDistance}km tempo intervals - 3x 400m at tempo pace with 2min recovery${clubText}`;
+      }
+      return `${tempoDistance}km tempo at threshold pace${clubText}`;
     case 'intervals': 
-      return `${weekPlan.interval || 4}km intervals at 5K pace${clubText}`;
+      if (distance <= 1.5) {
+        return `${distance}km interval training - short repeats at 5K effort${clubText}`;
+      }
+      return `${distance}km intervals at 5K pace${clubText}`;
     case 'long': 
-      return `${weekPlan.long || 8}km progressive long run${clubText}`;
+      if (distance <= 3) {
+        return `${distance}km long run - mix of running and walking as needed${clubText}`;
+      }
+      return `${distance}km progressive long run${clubText}`;
     default: 
-      return `${weekPlan.easy || 5}km steady running${clubText}`;
+      return `${distance}km steady running${clubText}`;
   }
 }
 
@@ -852,11 +1059,20 @@ function shouldAddGym(day: string, gymDaysPerWeek: number): boolean {
 }
 
 function shouldAddRunning(day: string, data: OnboardingData): boolean {
-  return !data.restDayPrefs.includes(day.toLowerCase());
+  // For training days per week, we should add running sessions to reach the target
+  // Only exclude Sunday as default rest day, but allow running on all other days
+  const restDays = (data as any).restDayPrefs || ['sunday'];
+  console.log(`🏃 shouldAddRunning(${day}): restDays=${JSON.stringify(restDays)}, result=${!restDays.includes(day.toLowerCase())}`);
+  return !restDays.includes(day.toLowerCase());
 }
 
 function shouldAddYoga(day: string, week: number): boolean {
   return ['Tuesday', 'Thursday'].includes(day) && week % 2 === 0;
+}
+
+function shouldAddSwimming(day: string, week: number): boolean {
+  // Add swimming on weekends, preferring Saturday then Sunday
+  return ['Saturday', 'Sunday'].includes(day);
 }
 
 function getGymType(day: string): string {
