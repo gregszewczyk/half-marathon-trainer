@@ -1184,19 +1184,8 @@ Keep it concise and motivational - this should make them feel good about their t
         </div>
       )}
 
-      {/* Header with Week Navigation */}
-      <div className="flex items-center justify-between p-6">
-        <div>
-          <h2 className="text-3xl font-bold text-white mb-2">AI Training Calendar</h2>
-          <p className="text-gray-400">
-            Week {currentWeek} of {totalWeeks} • {
-              currentWeek <= 4 ? 'Base Building Phase' : 
-              currentWeek <= 8 ? 'Build Phase' : 
-              currentWeek <= 10 ? 'Peak Phase' : 'Taper Phase'
-            }
-          </p>
-        </div>
-        
+      {/* Week Navigation */}
+      <div className="flex items-center justify-center p-6">
         <div className="flex items-center gap-3">
           <button
             onClick={() => setCurrentWeek(prev => Math.max(1, prev - 1))}
@@ -1222,7 +1211,6 @@ Keep it concise and motivational - this should make them feel good about their t
         </div>
       </div>
 
-      {/* Training Focus Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 px-6">
         <Card className="bg-gray-800 border-gray-700 hover:bg-gray-750 transition-colors">
           <CardContent className="p-6">

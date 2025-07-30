@@ -170,17 +170,10 @@ async function updateRaceTimePrediction(userId: string): Promise<string | null> 
     if (updatedPrediction !== currentGoalTime) {
       console.log(`🎯 AI updated prediction: ${currentGoalTime} → ${updatedPrediction}`);
       
-      // Store updated prediction in user profile (store as JSON for now)
-      await prisma.userProfile.update({
-        where: { userId },
-        data: {
-          // Store as JSON until schema migration
-          aiPrediction: JSON.stringify({
-            predictedTime: updatedPrediction,
-            lastUpdate: new Date().toISOString()
-          })
-        }
-      });
+      // TODO: Store updated prediction in database when schema updated
+      // Currently disabled due to missing aiPredictedTime field in UserProfile schema
+      // See TODO: "Add AI prediction storage to database schema"
+      console.log(`💾 Would store AI prediction: ${updatedPrediction} (awaiting schema update)`);
       
       return updatedPrediction;
     }

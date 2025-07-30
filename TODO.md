@@ -21,6 +21,21 @@ This file tracks all pending improvements, fixes, and feature requests for the H
   - **Implementation**: Add loading states to feedback modals, cross-week analysis UI
 
 ### Bug Fixes
+- [ ] **Add AI prediction storage to database schema** _(2025-07-30)_
+  - **Functionality**: Enable storage of AI-predicted race times and prediction timestamps
+  - **Files**: `prisma/schema.prisma`, `src/app/api/feedback/route.ts`
+  - **Implementation**: 
+    - Add `aiPredictedTime: String?` field to UserProfile model
+    - Add `lastPredictionUpdate: DateTime?` field to UserProfile model
+    - Update API to store predictions when they change
+    - Consider storing prediction history for accuracy tracking
+  - **Current Issue**: API tries to store predictions but database schema lacks required fields
+  
+- [ ] **Fix TypeScript errors from recent API changes** _(2025-07-30)_
+  - **Functionality**: Resolve database field errors preventing compilation
+  - **Files**: `src/app/api/feedback/route.ts`
+  - **Implementation**: Temporarily disable prediction storage until schema updated
+  - **Error**: `aiPrediction` and `notes` fields don't exist in UserProfile type
 - [ ] **Fix session feedback submission UX** _(no loading state, allows multiple clicks)_
   - **Functionality**: Add loading state and disable button during AI processing to prevent duplicate submissions
   - **Files**: `src/components/training/TrainingCalendar.tsx`
