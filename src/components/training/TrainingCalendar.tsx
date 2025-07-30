@@ -430,7 +430,9 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
       const crossTrainingColors = {
         swimming: 'bg-teal-700/80 text-teal-100 border-teal-600',
         yoga: 'bg-pink-700/80 text-pink-100 border-pink-600',
-        cycling: 'bg-yellow-700/80 text-yellow-100 border-yellow-600'
+        cycling: 'bg-yellow-700/80 text-yellow-100 border-yellow-600',
+        crossfit: 'bg-orange-700/80 text-orange-100 border-orange-600',
+        hiking: 'bg-green-700/80 text-green-100 border-green-600'
       };
       baseColor = crossTrainingColors[session.subType as keyof typeof crossTrainingColors] || 'bg-teal-700/80 text-teal-100 border-teal-600';
     } else if (session.type === 'running') {
