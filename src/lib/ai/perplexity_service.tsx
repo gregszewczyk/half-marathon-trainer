@@ -22,6 +22,8 @@ export interface TrainingAdaptation {
   };
   reasoning: string;
   severity: 'low' | 'medium' | 'high';
+  source: 'ai' | 'fallback'; // Indicates if response is from AI or fallback
+  userMessage: string; // User-facing message indicating the source and quality of response
 }
 
 export class PerplexityAIService {
@@ -152,12 +154,14 @@ export class PerplexityAIService {
     currentWeek: number
   ): Promise<TrainingAdaptation> {
     if (!this.apiKey) {
+      console.log('🤖 Using fallback adaptations (Perplexity API not available)');
       return this.getFallbackAdaptation(feedback);
     }
 
     const prompt = this.buildAdaptationPrompt(feedback, recentFeedback, currentWeek);
 
     try {
+      console.log('🤖 Generating AI adaptations using Perplexity API...');
       const response = await fetch(this.baseUrl, {
         method: 'POST',
         headers: {
@@ -188,9 +192,11 @@ export class PerplexityAIService {
       const data = await response.json();
       const aiResponse = data.choices[0]?.message?.content || '';
       
+      console.log('✅ AI adaptation generated successfully');
       return this.parseAIResponse(aiResponse, feedback);
     } catch (error) {
       console.error('Perplexity API Error:', error);
+      console.log('🤖 Falling back to basic adaptations due to API error');
       return this.getFallbackAdaptation(feedback);
     }
   }
@@ -353,11 +359,17 @@ Provide a single predicted time in HH:MM:SS format with brief justification.
   : 0
         },
         reasoning,
-        severity: this.calculateSeverity(feedback)
+        severity: this.calculateSeverity(feedback),
+        source: 'ai',
+        userMessage: '🤖 AI Coach Analysis - Personalized recommendations based on your training data and Manchester Half Marathon goal'
       };
     } catch (error) {
       console.error('Error parsing AI response:', error);
-      return this.getFallbackAdaptation(feedback);
+      console.log('🤖 Falling back to basic adaptations due to parsing error');
+      const fallback = this.getFallbackAdaptation(feedback);
+      // Override the user message to indicate parsing issue
+      fallback.userMessage = '⚠️ Basic Recommendations - AI response received but couldn\'t be processed, showing general guidance';
+      return fallback;
     }
   }
 
@@ -369,7 +381,9 @@ Provide a single predicted time in HH:MM:SS format with brief justification.
       recommendations: [],
       adaptations: {},
       reasoning: '',
-      severity: this.calculateSeverity(feedback)
+      severity: this.calculateSeverity(feedback),
+      source: 'fallback',
+      userMessage: '⚠️ Basic Recommendations - AI coach temporarily unavailable, showing general training guidance'
     };
 
     // High RPE/Difficulty

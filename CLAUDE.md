@@ -147,3 +147,13 @@ Tests use **Jest with Next.js integration**:
 **Database Migrations**: The app includes comprehensive migration scripts in `src/scripts/` for transitioning between schema versions safely.
 
 **AI Cost Optimization**: Perplexity API usage is optimized to stay within $5/month budget through intelligent triggering conditions and context-aware prompts.
+
+## TODO Tracking System
+
+When any fixes, improvements, or issues are mentioned during development:
+1. **Add to TODO.md** with appropriate priority (High/Medium/Low)
+2. **Include context** and date identified  
+3. **Update README.md** if the change affects documented features
+4. **Move completed items** to "Recently Completed" section with completion date
+
+The `TODO.md` file serves as the central tracking system for all pending work and helps maintain project continuity across development sessions.

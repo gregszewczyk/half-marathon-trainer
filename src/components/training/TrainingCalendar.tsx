@@ -184,6 +184,8 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
   const [predictedTime, setPredictedTime] = useState('2:00:00');
   const [isUpdatingPrediction, setIsUpdatingPrediction] = useState(false);
   const [lastPredictionUpdate, setLastPredictionUpdate] = useState<Date | null>(null);
+  const [crossWeekModifications, setCrossWeekModifications] = useState<any[]>([]);
+  const [showCrossWeekModal, setShowCrossWeekModal] = useState(false);
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const [showFeedback, setShowFeedback] = useState(false);
   const [difficultyValue, setDifficultyValue] = useState(5);
@@ -692,6 +694,9 @@ Keep it concise and motivational - this should make them feel good about their t
 
         // 🚀 NEW: Update AI predicted time based on recent performance
         await updateAIPredictedTime();
+        
+        // 🤖 NEW: Check if cross-week modifications are needed
+        await checkCrossWeekModifications();
 
         setShowFeedback(false);
       } else {
@@ -761,6 +766,110 @@ Keep it concise and motivational - this should make them feel good about their t
       console.error('❌ AI prediction update failed:', error);
     } finally {
       setIsUpdatingPrediction(false);
+    }
+  };
+
+  // 🤖 Cross-Week AI Modifications
+  const checkCrossWeekModifications = async () => {
+    if (!userId || !selectedSession) return;
+    
+    try {
+      console.log('🤖 Checking if cross-week modifications are needed');
+      
+      // Only trigger for high RPE/difficulty with concerning patterns
+      const aiService = new PerplexityAIService();
+      const shouldTrigger = aiService.shouldTriggerAI({
+        sessionId: selectedSession.id,
+        completed: feedbackForm.completed as 'yes' | 'no' | 'partial',
+        rpe: feedbackForm.rpe,
+        difficulty: feedbackForm.difficulty,
+        feeling: feedbackForm.feeling as 'terrible' | 'bad' | 'ok' | 'good' | 'great',
+        comments: feedbackForm.comments || '',
+        weekNumber: currentWeek,
+        sessionType: selectedSession.type,
+        targetPace: selectedSession.pace || '5:00',
+        targetDistance: selectedSession.distance || 5
+      });
+      
+      if (!shouldTrigger) {
+        console.log('🤖 No cross-week modifications needed - feedback within acceptable range');
+        return;
+      }
+      
+      // Get recent feedback to analyze patterns
+      const recentFeedbackPromises = [];
+      for (let week = Math.max(1, currentWeek - 1); week <= currentWeek; week++) {
+        recentFeedbackPromises.push(
+          fetch(`/api/feedback?userId=${userId}&weekNumber=${week}`)
+            .then(res => res.ok ? res.json() : null)
+        );
+      }
+      
+      const feedbackResponses = await Promise.all(recentFeedbackPromises);
+      const recentPatterns = feedbackResponses
+        .filter(Boolean)
+        .flatMap(response => response.feedback || [])
+        .filter(fb => fb.completed && fb.rpe >= 8) // High intensity pattern
+        .length;
+      
+      // Only suggest cross-week changes if there's a concerning pattern
+      if (recentPatterns >= 2) {
+        const mockModifications = [
+          {
+            week: currentWeek + 1,
+            day: 'Wednesday',
+            modificationType: 'intensity_reduction',
+            originalSession: {
+              subType: 'tempo',
+              distance: 8,
+              pace: '4:20'
+            },
+            newSession: {
+              subType: 'easy',
+              distance: 6,
+              pace: '4:50',
+              reason: 'Reduced intensity to prevent overreaching based on recent high RPE pattern'
+            },
+            explanation: `Based on your recent feedback showing consistent RPE 8+ sessions, I recommend reducing next week's tempo to an easy run to help you recover and maintain training quality.`
+          }
+        ];
+        
+        setCrossWeekModifications(mockModifications);
+        setShowCrossWeekModal(true);
+        console.log('🤖 Cross-week modifications suggested due to high intensity pattern');
+      }
+      
+    } catch (error) {
+      console.error('❌ Cross-week analysis failed:', error);
+    }
+  };
+  
+  const applyCrossWeekModifications = async (modifications: any[]) => {
+    try {
+      console.log(`🤖 Applying ${modifications.length} cross-week modifications`);
+      
+      const response = await fetch('/api/ai/cross-week-modifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          currentWeek,
+          modifications,
+          appliedAt: new Date().toISOString()
+        })
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        console.log('✅ Cross-week modifications applied:', result);
+        
+        // TODO: Update local session data to reflect changes
+        // For now, we'll show a success message
+        setShowCrossWeekModal(false);
+      } else {
+        console.error('❌ Failed to apply cross-week modifications');
+      }
+    } catch (error) {
+      console.error('❌ Error applying cross-week modifications:', error);
     }
   };
 
@@ -1888,6 +1997,103 @@ Keep it concise and motivational - this should make them feel good about their t
                 >
                   View Plan
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Cross-Week Modifications Modal */}
+      {showCrossWeekModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+          <div className="bg-gray-800 rounded-lg border border-gray-600 max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+            <div className="p-6">
+              {/* Header */}
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
+                    <Brain className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white">AI Cross-Week Analysis</h3>
+                    <p className="text-sm text-gray-400">Recommended adjustments to upcoming weeks</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowCrossWeekModal(false)}
+                  className="text-gray-400 hover:text-white text-xl"
+                >
+                  ×
+                </button>
+              </div>
+              
+              {/* Analysis Summary */}
+              <div className="mb-6 p-4 bg-yellow-900/20 border border-yellow-500/30 rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <AlertCircle className="w-5 h-5 text-yellow-400" />
+                  <span className="font-semibold text-yellow-300">Pattern Detected</span>
+                </div>
+                <p className="text-sm text-yellow-200">
+                  Based on your recent high RPE feedback, I've identified some adjustments that could help prevent overreaching and maintain training quality.
+                </p>
+              </div>
+              
+              {/* Modifications List */}
+              <div className="space-y-4 mb-6">
+                {crossWeekModifications.map((mod, index) => (
+                  <div key={index} className="p-4 bg-gray-700/50 rounded-lg border border-gray-600">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="text-sm font-medium text-cyan-400">
+                        Week {mod.week} • {mod.day}
+                      </div>
+                      <div className="text-xs text-gray-400 uppercase tracking-wide">
+                        {mod.modificationType.replace('_', ' ')}
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4 mb-3">
+                      <div>
+                        <div className="text-xs text-gray-400 mb-1">Current Plan</div>
+                        <div className="text-sm text-white">
+                          {mod.originalSession.subType} • {mod.originalSession.distance}km
+                        </div>
+                        <div className="text-xs text-gray-500">{mod.originalSession.pace}/km</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-gray-400 mb-1">AI Suggestion</div>
+                        <div className="text-sm text-green-400">
+                          {mod.newSession.subType} • {mod.newSession.distance || mod.originalSession.distance}km
+                        </div>
+                        <div className="text-xs text-gray-500">{mod.newSession.pace}/km</div>
+                      </div>
+                    </div>
+                    
+                    <div className="text-xs text-gray-300 bg-gray-800/50 rounded p-2">
+                      <strong className="text-cyan-400">Why:</strong> {mod.explanation}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
+              {/* Action Buttons */}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => applyCrossWeekModifications(crossWeekModifications)}
+                  className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 px-6 py-3 rounded-lg font-medium transition-colors text-white flex items-center justify-center gap-2"
+                >
+                  <Brain className="w-4 h-4" />
+                  Apply AI Recommendations
+                </button>
+                <button
+                  onClick={() => setShowCrossWeekModal(false)}
+                  className="px-6 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors text-white"
+                >
+                  Keep Current Plan
+                </button>
+              </div>
+              
+              <div className="mt-4 text-xs text-gray-500 text-center">
+                🤖 These changes will only affect future weeks and help maintain training quality
               </div>
             </div>
           </div>

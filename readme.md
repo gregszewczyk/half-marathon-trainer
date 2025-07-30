@@ -101,6 +101,8 @@ The app uses **Perplexity AI** (`sonar-pro` model) for intelligent training adap
 - **Weeks 9-10**: Peak Phase (race-specific fitness)
 - **Weeks 11-12**: Taper Phase (recovery + sharpness)
 
+**Note**: Training plan duration is now dynamic (4-20 weeks) based on your race date!
+
 ### Weekly Schedule
 - **Monday 5PM**: Easy run with MadeRunning + Push gym (4:30AM)
 - **Tuesday**: Pull gym (4:30AM)
@@ -199,15 +201,37 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **Built with ❤️ for runners, by runners. Good luck with your half marathon! 🏃‍♂️**
 
+## 📋 Contributing & Development
+
+### TODO List
+We maintain an active TODO list to track improvements, bug fixes, and new features. See [TODO.md](./TODO.md) for:
+- 🚨 High priority items (bugs, critical fixes)
+- 🔧 Medium priority items (features, improvements)
+- 🎯 Low priority items (nice-to-have features)
+
+### Adding New Items
+When you identify something that needs fixing or improvement:
+1. Add it to [TODO.md](./TODO.md) with appropriate priority
+2. Include context and any relevant details
+3. Update this README if it affects the feature list
+
+### Recent Updates (July 2025)
+- ✅ **Dynamic Training Plans**: Plans now adapt to your race date (4-20 weeks)
+- ✅ **Smart AI Triggers**: Context-aware adaptations that consider your comments
+- ✅ **AI Race Predictions**: Restored predicted time feature with beautiful UI
+- ✅ **Improved Messaging**: Fixed misleading AI feedback messages
+
 ## 📈 Current Status
 
 - ✅ Core training plan functionality
-- ✅ AI adaptations with Perplexity integration
+- ✅ AI adaptations with smart context-aware triggers
 - ✅ Session feedback and RPE tracking
+- ✅ AI race time predictions
+- ✅ Dynamic training plan duration
 - ✅ Responsive UI with dark theme
 - ✅ Volume calculations and periodization
 - 🔄 Garmin integration (ready for testing)
 - 🔄 Database persistence (schema ready)
 - 🔄 Production deployment
 
-**Ready for July 21st training start! 🎯**
+**Ready for training with intelligent AI coaching! 🎯**

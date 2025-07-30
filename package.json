@@ -21,6 +21,8 @@
     "db:studio": "prisma studio",
     "postinstall": "prisma generate",
     "migrate:data": "node scripts/migrate-data.js",
+    "todo:add": "node scripts/add-todo.js",
+    "todo:view": "cat TODO.md",
     "build": "npm install --force && next build",
     "dev": "npm install --legacy-peer-deps && next dev"
   },
