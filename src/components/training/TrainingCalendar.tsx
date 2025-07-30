@@ -80,7 +80,8 @@ const useGeneratedSessions = (userId: string | undefined) => {
     sessions: Session[];
     loading: boolean;
     error: string | null;
-  }>({ sessions: [], loading: !!userId, error: null });
+    userProfile: any | null;
+  }>({ sessions: [], loading: !!userId, error: null, userProfile: null });
   
   const abortRef = useRef<AbortController | null>(null);
   const cacheKey = useMemo(() => `sessions-${userId ?? 'anon'}`, [userId]);
@@ -123,17 +124,29 @@ const useGeneratedSessions = (userId: string | undefined) => {
           const sessions = data.sessions;
           console.log(`✅ Loaded ${sessions.length} sessions from API`);
           
+          // 🆕 NEW: Extract and use user profile data
+          if (data.userProfile) {
+            setUserProfile(data.userProfile);
+            setGoalTime(data.userProfile.targetTime || '2:00:00');
+            console.log(`👤 User profile loaded: ${data.userProfile.targetTime} goal for ${data.userProfile.raceType}`);
+          }
+          
           // Cache the result
           _sessionCache.set(cacheKey, { ts: Date.now(), data: sessions });
           
           setState({ sessions, loading: false, error: null });
         } else {
-          setState({ sessions: [], loading: false, error: null });
+          setState({ 
+            sessions: [], 
+            loading: false, 
+            error: null,
+            userProfile: data.userProfile || null
+          });
         }
       } catch (error: any) {
         if (error.name !== 'AbortError') {
           console.error('❌ Error loading sessions:', error.message);
-          setState({ sessions: [], loading: false, error: error.message });
+          setState({ sessions: [], loading: false, error: error.message, userProfile: null });
         }
       }
     };
@@ -167,12 +180,22 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
   const shouldUseFallback = !sessionData || sessionData.length === 0;
   console.log('🔧 TrainingCalendar data source:', shouldUseFallback ? 'fallback hook' : 'passed sessionData');
   
-  const { sessions: allSessions, loading, error } = shouldUseFallback
+  const { sessions: allSessions, loading, error, userProfile: hookUserProfile } = shouldUseFallback
     ? useGeneratedSessions(userId)
-    : { sessions: sessionData, loading: false, error: null };
+    : { sessions: sessionData, loading: false, error: null, userProfile: null };
+    
+  // 🆕 Update user profile and goal time when hook data changes
+  useEffect(() => {
+    if (hookUserProfile && shouldUseFallback) {
+      setUserProfile(hookUserProfile);
+      setGoalTime(hookUserProfile.targetTime || '2:00:00');
+      console.log(`👤 User profile loaded: ${hookUserProfile.targetTime} goal for ${hookUserProfile.raceType}`);
+    }
+  }, [hookUserProfile, shouldUseFallback]);
 
   const [currentWeek, setCurrentWeek] = useState(initialWeek || 1);
   const [goalTime, setGoalTime] = useState('2:00:00');
+  const [userProfile, setUserProfile] = useState<any>(null);
 
   // 🚀 Update current week when initialWeek prop changes
   useEffect(() => {
@@ -769,6 +792,32 @@ Keep it concise and motivational - this should make them feel good about their t
     }
   };
 
+  // 🆕 Helper function to format race display
+  const formatRaceDisplay = () => {
+    if (!userProfile) return 'Half Marathon Goal';
+    
+    const raceTypeMap: { [key: string]: string } = {
+      'FIVE_K': '5K',
+      'TEN_K': '10K', 
+      'HALF_MARATHON': 'Half Marathon',
+      'MARATHON': 'Marathon'
+    };
+    
+    const raceType = raceTypeMap[userProfile.raceType] || 'Half Marathon';
+    
+    if (userProfile.raceDate) {
+      const raceDate = new Date(userProfile.raceDate);
+      const options: Intl.DateTimeFormatOptions = { 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      };
+      return `${raceType} • ${raceDate.toLocaleDateString('en-GB', options)}`;
+    }
+    
+    return `${raceType} Goal`;
+  };
+
   // 🤖 Cross-Week AI Modifications
   const checkCrossWeekModifications = async () => {
     if (!userId || !selectedSession) return;
@@ -793,6 +842,11 @@ Keep it concise and motivational - this should make them feel good about their t
       
       if (!shouldTrigger) {
         console.log('🤖 No cross-week modifications needed - feedback within acceptable range');
+        
+        // 🆕 Show user confirmation that AI checked their session
+        setMotivationalMessage(`✅ AI Coach Analysis: Your session performance looks excellent! Training plan remains on track for your ${formatRaceDisplay()} goal. No adjustments needed.`);
+        setShowMotivationalAI(true);
+        
         return;
       }
       
@@ -814,6 +868,10 @@ Keep it concise and motivational - this should make them feel good about their t
       
       // Only suggest cross-week changes if there's a concerning pattern
       if (recentPatterns >= 2) {
+        // 🆕 Show user that AI detected patterns and is making recommendations
+        setMotivationalMessage('🤖 AI Coach detected training stress patterns in your recent sessions. Analyzing recommendations for upcoming training adjustments...');
+        setShowMotivationalAI(true);
+        
         const mockModifications = [
           {
             week: currentWeek + 1,
@@ -1065,7 +1123,7 @@ Keep it concise and motivational - this should make them feel good about their t
               <div className="text-center p-4 bg-gray-700/50 rounded-lg border border-gray-600">
                 <div className="text-xs text-gray-400 mb-2 font-medium uppercase tracking-wide">Your Goal</div>
                 <div className="text-2xl font-bold text-green-400 font-mono mb-1">{goalTime}</div>
-                <div className="text-xs text-gray-400">Manchester Half Marathon</div>
+                <div className="text-xs text-gray-400">{formatRaceDisplay()}</div>
               </div>
               
               {/* AI Predicted Time */}

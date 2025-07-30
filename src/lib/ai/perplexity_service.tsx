@@ -1,13 +1,13 @@
 export interface SessionFeedback {
   sessionId: string;
   completed: 'yes' | 'no' | 'partial';
-  actualPace?: string;
+  actualPace?: string; // Keep optional for backwards compatibility
   difficulty: number; // 1-10
   rpe: number; // 1-10
   feeling: 'terrible' | 'bad' | 'ok' | 'good' | 'great';
   comments?: string;
   weekNumber: number;
-  sessionType: string;
+  sessionType: string; // 'easy', 'tempo', 'intervals', 'long', etc.
   targetPace: string;
   targetDistance: number;
 }
@@ -79,6 +79,90 @@ export class PerplexityAIService {
   }
 
   /**
+   * Get expected RPE range for different session types
+   */
+  private getExpectedRPERange(sessionType: string): { min: number; max: number } {
+    const rpeRanges: { [key: string]: { min: number; max: number } } = {
+      'easy': { min: 3, max: 5 },
+      'tempo': { min: 6, max: 7 },
+      'intervals': { min: 8, max: 9 },
+      'long': { min: 4, max: 6 },
+      'recovery': { min: 2, max: 4 },
+      'threshold': { min: 7, max: 8 },
+      'fartlek': { min: 5, max: 8 },
+      'race_pace': { min: 7, max: 8 }
+    };
+
+    // Default to easy run range if session type not found
+    return rpeRanges[sessionType.toLowerCase()] ?? rpeRanges['easy']!;
+  }
+
+  /**
+   * Get pace deviation threshold based on session type
+   */
+  private getPaceDeviationThreshold(sessionType: string): number {
+    const thresholds: { [key: string]: number } = {
+      'easy': 15,        // More flexible - easy runs are about effort, not precise pace
+      'recovery': 20,    // Very flexible - recovery is all about easy effort
+      'long': 12,        // Moderate - consistency matters but some drift is OK
+      'tempo': 8,        // Strict - tempo pace is specific for lactate threshold
+      'threshold': 8,    // Strict - threshold work needs precision
+      'intervals': 5,    // Very strict - interval pacing is critical for training stimulus
+      'race_pace': 6,    // Very strict - race pace practice needs accuracy
+      'fartlek': 15,     // Flexible - fartlek is about varied effort, not precise pacing
+      'hill': 12         // Moderate - hill repeats have natural pace variation
+    };
+
+    return thresholds[sessionType.toLowerCase()] || 10; // Default: 10 seconds
+  }
+
+  /**
+   * Check if actual pace deviates significantly from target pace
+   */
+  private isPaceDeviationSignificant(actualPace: string, targetPace: string, sessionType: string = 'easy'): boolean {
+    try {
+      const actualSeconds = this.paceToSeconds(actualPace);
+      const targetSeconds = this.paceToSeconds(targetPace);
+      
+      if (actualSeconds === 0 || targetSeconds === 0) return false;
+      
+      const deviationSeconds = Math.abs(actualSeconds - targetSeconds);
+      const thresholdSeconds = this.getPaceDeviationThreshold(sessionType);
+      
+      if (deviationSeconds >= thresholdSeconds) {
+        const deviationType = actualSeconds > targetSeconds ? 'slower' : 'faster';
+        console.log(`🤖 Significant pace deviation for ${sessionType}: ${deviationSeconds}s ${deviationType} than target (threshold: ${thresholdSeconds}s)`);
+        return true;
+      }
+      
+      console.log(`🤖 Pace deviation for ${sessionType}: ${deviationSeconds}s (within ${thresholdSeconds}s threshold)`);
+      return false;
+    } catch (error) {
+      console.error('Error calculating pace deviation:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Convert pace string (MM:SS) to total seconds
+   */
+  private paceToSeconds(pace: string): number {
+    try {
+      const parts = pace.split(':');
+      if (parts.length !== 2) return 0;
+      
+      const minutes = parseInt(parts[0] || '0', 10);
+      const seconds = parseInt(parts[1] || '0', 10);
+      
+      if (isNaN(minutes) || isNaN(seconds)) return 0;
+      
+      return (minutes * 60) + seconds;
+    } catch (error) {
+      return 0;
+    }
+  }
+
+  /**
    * Main AI trigger - determines if training adaptations are needed
    * Now uses smarter logic that considers context and comment sentiment
    */
@@ -94,6 +178,19 @@ export class PerplexityAIService {
     
     // VERY high difficulty (≥9) - always concerning regardless of target  
     if (feedback.difficulty >= 9) return true;
+    
+    // 🆕 NEW: Check if RPE is outside expected range for session type
+    const expectedRPE = this.getExpectedRPERange(feedback.sessionType);
+    if (feedback.rpe < expectedRPE.min || feedback.rpe > expectedRPE.max) {
+      console.log(`🤖 RPE ${feedback.rpe} outside expected range ${expectedRPE.min}-${expectedRPE.max} for ${feedback.sessionType} - triggering adaptation`);
+      return true;
+    }
+    
+    // 🆕 NEW: Check if actual pace deviates significantly from target
+    if (feedback.actualPace && this.isPaceDeviationSignificant(feedback.actualPace, feedback.targetPace, feedback.sessionType)) {
+      console.log(`🤖 Pace deviation detected for ${feedback.sessionType}: actual ${feedback.actualPace} vs target ${feedback.targetPace} - triggering adaptation`);
+      return true;
+    }
     
     // Moderate RPE (8) - only trigger if comments indicate real problems
     if (feedback.rpe === 8) {
@@ -267,18 +364,31 @@ export class PerplexityAIService {
     const contextNote = isHighButExpected ? 
       "\n⚠️  IMPORTANT: RPE/Difficulty of 8 may be EXPECTED for this session type. Check if adaptation is actually needed before recommending changes." : "";
 
+    // Check why AI was triggered
+    const expectedRPE = this.getExpectedRPERange(feedback.sessionType);
+    const isRPEOutOfRange = feedback.rpe < expectedRPE.min || feedback.rpe > expectedRPE.max;
+    const hasPaceDeviation = feedback.actualPace && this.isPaceDeviationSignificant(feedback.actualPace, feedback.targetPace, feedback.sessionType);
+    
+    let triggerReason = "";
+    if (isRPEOutOfRange) {
+      triggerReason += `\n🚨 TRIGGER: RPE ${feedback.rpe} is outside expected range ${expectedRPE.min}-${expectedRPE.max} for ${feedback.sessionType} sessions`;
+    }
+    if (hasPaceDeviation) {
+      triggerReason += `\n🚨 TRIGGER: Significant pace deviation detected (actual: ${feedback.actualPace}, target: ${feedback.targetPace})`;
+    }
+
     return `
-HALF MARATHON TRAINING ADAPTATION REQUEST
+HALF MARATHON TRAINING ADAPTATION REQUEST${triggerReason}
 
 Current Session:
 - Week ${currentWeek} (${phase} phase)
-- Session: ${feedback.sessionType}
+- Session: ${feedback.sessionType} (Expected RPE: ${expectedRPE.min}-${expectedRPE.max})
 - Target: ${feedback.targetDistance}km at ${feedback.targetPace}/km
 - Completion: ${feedback.completed}
-- RPE: ${feedback.rpe}/10 ${feedback.rpe === 8 ? '(moderate-high)' : feedback.rpe >= 9 ? '(very high)' : ''}
+- RPE: ${feedback.rpe}/10 ${feedback.rpe === 8 ? '(moderate-high)' : feedback.rpe >= 9 ? '(very high)' : isRPEOutOfRange ? '(OUTSIDE EXPECTED RANGE)' : ''}
 - Difficulty: ${feedback.difficulty}/10 ${feedback.difficulty === 8 ? '(moderate-high)' : feedback.difficulty >= 9 ? '(very high)' : ''}
 - Feeling: ${feedback.feeling}
-- Actual Pace: ${feedback.actualPace || 'Not recorded'}
+- Actual Pace: ${feedback.actualPace || 'Not recorded'}${hasPaceDeviation ? ' (SIGNIFICANT DEVIATION)' : ''}
 - Comments: ${feedback.comments || 'None'}${contextNote}
 
 Recent Training Trend (last 3 sessions):
