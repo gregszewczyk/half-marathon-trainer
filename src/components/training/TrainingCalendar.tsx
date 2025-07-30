@@ -17,7 +17,6 @@ interface Session {
   time?: string;
   rpe?: number;
   completed?: boolean; // Now comes from API response
-  completionType?: 'yes' | 'partial' | 'no' | null; // Type of completion
   warmup?: string;
   mainSet?: string;
   cooldown?: string;
@@ -209,7 +208,6 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
 
   const [showMotivationalAI, setShowMotivationalAI] = useState(false);
   const [motivationalMessage, setMotivationalMessage] = useState<string>('');
-  const [completionUpdate, setCompletionUpdate] = useState(0); // Force re-render when completion changes
 
   // Feedback form state
   const [feedbackForm, setFeedbackForm] = useState({
@@ -316,7 +314,7 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
   // 🔧 Filter sessions by week and group by day (using useMemo to prevent re-renders)
   const weekSessions = useMemo(() => {
     return allSessions.filter(session => session.week === currentWeek);
-  }, [allSessions, currentWeek, completionUpdate]);
+  }, [allSessions, currentWeek]);
 
   // Group sessions by day (using useMemo instead of useEffect + state)
   const weekData = useMemo(() => {
@@ -457,7 +455,7 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
     // Extract distance from mainSet text like "4.5km tempo at enhanced threshold pace"
     const distanceMatch = session.mainSet.match(/(\d+\.?\d*)km/);
     if (distanceMatch) {
-      return parseFloat(distanceMatch[1]);
+      return parseFloat(distanceMatch[1] ?? '');
     }
     
     // Fallback to session.distance if no match found
@@ -473,71 +471,49 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
       details = ['Recovery & stretching'];
     } else if (session.type === 'gym') {
       mainText = `${session.subType.toUpperCase()} DAY`;
-      details = []; // No additional details needed for gym sessions
+      details = [`Duration: ${session.duration || '60min'}`];
     } else if (session.type === 'running') {
-      // Extract club name from mainSet if it's a club session
-      let clubText = '';
-      if (session.isRunningClub && session.mainSet) {
-        console.log('🔍 Debug mainSet for club:', session.mainSet);
-        const clubMatch = session.mainSet.match(/with (.+?)(?:\s|$)/);
-        console.log('🔍 Club match result:', clubMatch);
-        if (clubMatch) {
-          clubText = ` (${clubMatch[1]})`;
-        }
-      }
-      
+      const madeRunningText = session.madeRunning ? ' (MadeRunning)' : '';
       const mainSetDistance = getMainSetDistance(session);
-      mainText = `${session.subType.charAt(0).toUpperCase() + session.subType.slice(1)} ${mainSetDistance}K${clubText}`;
+      mainText = `${session.subType.charAt(0).toUpperCase() + session.subType.slice(1)} ${mainSetDistance}K${madeRunningText}`;
       
       const workoutTime = calculateDuration(session.distance || 5, session.pace || '6:30');
       
       switch (session.subType) {
         case 'easy':
-          const easyMainSetDistance = getMainSetDistance(session);
-          const easyPaceSeconds = paceToSeconds(session.pace || '6:30');
-          const easyMainTime = Math.round((easyMainSetDistance * easyPaceSeconds) / 60);
-          const easyTotalTime = 10 + easyMainTime + 5; // warmup + main + cooldown
+          const easyMainTime = workoutTime - 15;
           details = [
             'WU: 10min easy jog',
             `Main: ${easyMainTime}min@${session.pace}/km`,
             'CD: 5min walk',
-            `Total: ${easyTotalTime}min`
+            `Total: ${workoutTime}min`
           ];
           break;
         case 'tempo':
-          const mainSetDistance = getMainSetDistance(session);
-          const paceSeconds = paceToSeconds(session.pace || '5:30');
-          const tempoMainTime = Math.round((mainSetDistance * paceSeconds) / 60);
-          const totalTime = 15 + tempoMainTime + 10; // warmup + main + cooldown
+          const tempoMainTime = Math.round((session.distance || 5) * 6); // ~6min per km for main set
           details = [
             'WU: 15min easy + strides',
             `Tempo: ${tempoMainTime}min@${session.pace}/km`,
             'CD: 10min easy',
-            `Total: ${totalTime}min`
+            `Total: ${workoutTime}min`
           ];
           break;
         case 'long':
-          const longMainSetDistance = getMainSetDistance(session);
-          const longPaceSeconds = paceToSeconds(session.pace || '6:30');
-          const longMainTime = Math.round((longMainSetDistance * longPaceSeconds) / 60);
-          const longTotalTime = 15 + longMainTime + 10; // warmup + main + cooldown
+          const longMainTime = workoutTime - 25;
           details = [
             'WU: 15min easy',
             `Long: ${longMainTime}min progressive`,
             'CD: 10min walk',
-            `Total: ${longTotalTime}min`
+            `Total: ${workoutTime}min`
           ];
           break;
         case 'intervals':
-          const intervalMainSetDistance = getMainSetDistance(session);
-          const intervalPaceSeconds = paceToSeconds(session.pace || '5:00');
-          const intervalMainTime = Math.round((intervalMainSetDistance * intervalPaceSeconds) / 60);
-          const intervalTotalTime = 15 + intervalMainTime + 10; // warmup + main + cooldown
+          const intervalMainTime = Math.round((session.distance || 4) * 5); // ~5min per km for intervals
           details = [
             'WU: 15min easy',
             `Intervals: ${intervalMainTime}min@${session.pace}/km`,
             'CD: 10min easy',
-            `Total: ${intervalTotalTime}min`
+            `Total: ${workoutTime}min`
           ];
           break;
         default:
@@ -662,9 +638,6 @@ Keep it concise and motivational - this should make them feel good about their t
             session.completed = true;
           }
         });
-        
-        // Force component re-render by updating completion trigger
-        setCompletionUpdate(prev => prev + 1);
         
         // 🚀 NEW: Generate AI motivational feedback
         console.log('🤖 Generating motivational feedback for session:', selectedSession.id);
@@ -928,29 +901,21 @@ Keep it concise and motivational - this should make them feel good about their t
                           </div>
                         )}
                         
-                        {session.targetRPE && session.type === 'running' && (
+                        {session.targetRPE && (
                           <div className="text-xs opacity-75 space-y-1">
-                            <div className="space-y-1">
-                              <div>
-                                <span>Target RPE: {session.targetRPE.min}-{session.targetRPE.max}/10</span>
-                              </div>
-                              <div className="flex gap-0.5 justify-center">
-                                {[...Array(10)].map((_, i) => {
-                                  const rpeNumber = i + 1;
-                                  const isInRange = session.targetRPE && rpeNumber >= session.targetRPE.min && rpeNumber <= session.targetRPE.max;
-                                  return (
-                                    <div key={i} className="flex flex-col items-center">
-                                      <div
-                                        className={`w-1.5 h-1.5 rounded-full ${
-                                          isInRange ? 'bg-cyan-400' : 'bg-gray-600'
-                                        }`}
-                                      />
-                                      <div className={`text-xs mt-0.5 ${isInRange ? 'text-cyan-400' : 'text-gray-500'}`} style={{fontSize: '6px', lineHeight: '8px'}}>
-                                        {rpeNumber}
-                                      </div>
-                                    </div>
-                                  );
-                                })}
+                            <div className="flex items-center justify-between">
+                              <span>Target RPE: {session.targetRPE.min}-{session.targetRPE.max}/10</span>
+                              <div className="flex gap-0.5">
+                                {[...Array(10)].map((_, i) => (
+                                  <div
+                                    key={i}
+                                    className={`w-1.5 h-1.5 rounded-full ${
+                                      session.targetRPE && i + 1 >= session.targetRPE.min && i + 1 <= session.targetRPE.max
+                                        ? 'bg-cyan-400'
+                                        : 'bg-gray-600'
+                                    }`}
+                                  />
+                                ))}
                               </div>
                             </div>
                             {session.targetRPE?.description && (
@@ -980,27 +945,11 @@ Keep it concise and motivational - this should make them feel good about their t
                           </div>
                         )}
                         
-                        {/* Completion indicator with different types */}
+                        {/* Completion tick indicator */}
                         {session.completed && (
-                          <div className="flex items-center gap-1 text-xs font-medium">
-                            {session.completionType === 'yes' && (
-                              <>
-                                <span className="w-4 h-4 bg-green-400 text-green-900 rounded-full flex items-center justify-center text-xs font-bold">✓</span>
-                                <span className="text-green-400">Completed</span>
-                              </>
-                            )}
-                            {session.completionType === 'partial' && (
-                              <>
-                                <span className="w-4 h-4 bg-yellow-400 text-yellow-900 rounded-full flex items-center justify-center text-xs font-bold">~</span>
-                                <span className="text-yellow-400">Partial</span>
-                              </>
-                            )}
-                            {session.completionType === 'no' && (
-                              <>
-                                <span className="w-4 h-4 bg-red-400 text-red-900 rounded-full flex items-center justify-center text-xs font-bold">×</span>
-                                <span className="text-red-400">Attempted</span>
-                              </>
-                            )}
+                          <div className="flex items-center gap-1 text-xs text-green-400 font-medium">
+                            <span className="w-4 h-4 bg-green-400 text-green-900 rounded-full flex items-center justify-center text-xs font-bold">✓</span>
+                            Completed
                           </div>
                         )}
                       </div>
@@ -1315,8 +1264,8 @@ Keep it concise and motivational - this should make them feel good about their t
               <div>
                 <div className="text-xs text-gray-400 mb-1">DISTANCE</div>
                 <div className="text-lg font-bold text-white flex items-center gap-2">
-                  {getMainSetDistance(selectedSession)}km
-                  {selectedSession.aiModified && selectedSession.originalDistance !== getMainSetDistance(selectedSession) && (
+                  {selectedSession.distance}km
+                  {selectedSession.aiModified && selectedSession.originalDistance !== selectedSession.distance && (
                     <span className="text-xs text-cyan-400">
                       (was {selectedSession.originalDistance}km)
                     </span>
