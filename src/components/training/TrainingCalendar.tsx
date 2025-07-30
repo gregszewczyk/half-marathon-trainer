@@ -88,7 +88,7 @@ const useGeneratedSessions = (userId: string | undefined) => {
 
   useEffect(() => {
     if (!userId) {
-      setState({ sessions: [], loading: false, error: null });
+      setState({ sessions: [], loading: false, error: null, userProfile: null });
       return;
     }
 
@@ -96,7 +96,7 @@ const useGeneratedSessions = (userId: string | undefined) => {
     const cached = _sessionCache.get(cacheKey);
     if (cached && Date.now() - cached.ts < CACHE_TTL) {
       console.log('📦 Using cached sessions for', userId);
-      setState({ sessions: cached.data, loading: false, error: null });
+      setState({ sessions: cached.data, loading: false, error: null, userProfile: null });
       return;
     }
 
@@ -124,17 +124,15 @@ const useGeneratedSessions = (userId: string | undefined) => {
           const sessions = data.sessions;
           console.log(`✅ Loaded ${sessions.length} sessions from API`);
           
-          // 🆕 NEW: Extract and use user profile data
+          // 🆕 NEW: Extract and use user profile data (handled in setState above)
           if (data.userProfile) {
-            setUserProfile(data.userProfile);
-            setGoalTime(data.userProfile.targetTime || '2:00:00');
             console.log(`👤 User profile loaded: ${data.userProfile.targetTime} goal for ${data.userProfile.raceType}`);
           }
           
           // Cache the result
           _sessionCache.set(cacheKey, { ts: Date.now(), data: sessions });
           
-          setState({ sessions, loading: false, error: null });
+          setState({ sessions, loading: false, error: null, userProfile: data.userProfile || null });
         } else {
           setState({ 
             sessions: [], 
@@ -248,6 +246,12 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
     feeling: 'good',
     comments: ''
   });
+
+  // 🚀 NEW: Loading state for feedback submission
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+  
+  // 🧪 TEST: Resubmit last session functionality
+  const [isResubmitting, setIsResubmitting] = useState(false);
 
   // Add this after your existing state variables
   const [isMobile, setIsMobile] = useState(false);
@@ -442,6 +446,176 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
     setDraggedSession(null);
     setDraggedFromDay(null);
   }, [draggedSession, draggedFromDay]);
+
+  // 🚀 NEW: Handle feedback submission with loading states and AI processing
+  const handleFeedbackSubmit = async () => {
+    if (!selectedSession || isSubmittingFeedback) return;
+
+    setIsSubmittingFeedback(true);
+    
+    try {
+      // Prepare feedback data
+      const feedbackData = {
+        sessionId: selectedSession.id,
+        completed: feedbackForm.completed,
+        actualPace: feedbackForm.actualPace || undefined,
+        difficulty: difficultyValue,
+        rpe: rpeValue,
+        feeling: feedbackForm.feeling,
+        comments: feedbackForm.comments,
+        weekNumber: selectedSession.week || currentWeek,
+        sessionType: selectedSession.subType,
+        targetPace: selectedSession.pace || '5:30',
+        targetDistance: selectedSession.distance || 5
+      };
+
+      console.log('🚀 Submitting session feedback:', feedbackData);
+
+      // Submit feedback to API (correct endpoint)
+      const response = await fetch('/api/feedback', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: userId,
+          sessionId: feedbackData.sessionId,
+          weekNumber: feedbackData.weekNumber,
+          day: selectedSession.dayOfWeek || 'saturday',
+          sessionType: 'running',
+          sessionSubType: feedbackData.sessionType,
+          plannedDistance: feedbackData.targetDistance,
+          plannedPace: feedbackData.targetPace,
+          completed: feedbackData.completed,
+          actualPace: feedbackData.actualPace,
+          difficulty: feedbackData.difficulty,
+          rpe: feedbackData.rpe,
+          feeling: feedbackData.feeling,
+          comments: feedbackData.comments
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to submit feedback: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('✅ Feedback submitted successfully:', result);
+
+      // Show success message or AI adaptation if available
+      if (result.adaptation) {
+        // Show AI adaptation modal/message
+        setAiAdjustment(result.adaptation);
+        setShowAiPanel(true);
+      }
+
+      // 🚀 NEW: Update AI prediction if received
+      if (result.updatedPrediction) {
+        setPredictedTime(result.updatedPrediction);
+        setLastPredictionUpdate(new Date());
+        console.log(`🎯 AI updated predicted time: ${result.updatedPrediction}`);
+        
+        // Show a brief success message about prediction update
+        // Could add a toast notification here
+      }
+
+      // Reset form and close modal
+      setFeedbackForm({
+        completed: 'yes',
+        actualPace: '',
+        difficulty: 5,
+        rpe: 5,
+        feeling: 'good',
+        comments: ''
+      });
+      setDifficultyValue(5);
+      setRpeValue(5);
+      setShowFeedback(false);
+      setSelectedSession(null);
+
+    } catch (error) {
+      console.error('❌ Error submitting feedback:', error);
+      // Could add error toast here
+      alert('Failed to submit feedback. Please try again.');
+    } finally {
+      setIsSubmittingFeedback(false);
+    }
+  };
+
+  // 🧪 TEST: Resubmit last session for AI prediction testing
+  const handleResubmitLastSession = async () => {
+    if (isResubmitting || !userId) return;
+
+    setIsResubmitting(true);
+    
+    try {
+      console.log('🧪 Fetching last session feedback for resubmission...');
+      
+      // Get the most recent feedback from the database
+      const response = await fetch(`/api/feedback?userId=${userId}&limit=1`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch last session: ${response.status}`);
+      }
+      
+      const result = await response.json();
+      
+      if (!result.success || !result.feedback || result.feedback.length === 0) {
+        alert('No previous session feedback found to resubmit.');
+        return;
+      }
+      
+      const lastFeedback = result.feedback[0];
+      console.log('📝 Last feedback found:', lastFeedback);
+      
+      // Resubmit the same feedback data to trigger AI processing
+      const resubmitResponse = await fetch('/api/feedback', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: userId,
+          sessionId: lastFeedback.sessionId,
+          weekNumber: lastFeedback.week,
+          day: lastFeedback.day,
+          sessionType: lastFeedback.sessionType,
+          sessionSubType: lastFeedback.sessionSubType,
+          plannedDistance: lastFeedback.plannedDistance,
+          plannedPace: lastFeedback.plannedPace,
+          completed: lastFeedback.completed,
+          actualPace: lastFeedback.actualPace,
+          difficulty: lastFeedback.difficulty,
+          rpe: lastFeedback.rpe,
+          feeling: lastFeedback.feeling,
+          comments: lastFeedback.comments
+        })
+      });
+
+      if (!resubmitResponse.ok) {
+        throw new Error(`Failed to resubmit feedback: ${resubmitResponse.status}`);
+      }
+
+      const resubmitResult = await resubmitResponse.json();
+      console.log('✅ Feedback resubmitted successfully:', resubmitResult);
+
+      // Update AI prediction if received
+      if (resubmitResult.updatedPrediction) {
+        setPredictedTime(resubmitResult.updatedPrediction);
+        setLastPredictionUpdate(new Date());
+        console.log(`🎯 AI updated predicted time: ${resubmitResult.updatedPrediction}`);
+        alert(`AI prediction updated: ${resubmitResult.updatedPrediction}`);
+      } else {
+        alert('Session resubmitted successfully. No prediction update (may not meet criteria for update).');
+      }
+
+    } catch (error) {
+      console.error('❌ Error resubmitting last session:', error);
+      alert('Failed to resubmit last session. Check console for details.');
+    } finally {
+      setIsResubmitting(false);
+    }
+  };
 
   // Utility functions
   const getSessionColor = (session: Session): string => {
@@ -669,8 +843,8 @@ Keep it concise and motivational - this should make them feel good about their t
     }
   };
 
-  // Handle feedback submission (simplified version)
-  const handleFeedbackSubmit = async () => {
+  // Handle feedback submission (legacy version - to be removed)
+  const handleFeedbackSubmitLegacy = async () => {
     if (!selectedSession || !userId) return;
 
     try {
@@ -1162,6 +1336,37 @@ Keep it concise and motivational - this should make them feel good about their t
               </div>
               <div className="text-xs text-gray-500 mt-1">
                 🤖 AI analyzes your RPE, pace, and completion data to predict your race performance
+              </div>
+            </div>
+            
+            {/* 🧪 TEST: Resubmit Last Session Button */}
+            <div className="mt-4 p-3 bg-blue-900/20 rounded-lg border border-blue-400/30">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-medium text-blue-300">🧪 Test AI Predictions</div>
+                  <div className="text-xs text-blue-200 mt-1">Resubmit your last session to test AI prediction updates</div>
+                </div>
+                <button
+                  onClick={handleResubmitLastSession}
+                  disabled={isResubmitting}
+                  className={`px-3 py-1.5 rounded text-sm transition-colors flex items-center gap-2 ${
+                    isResubmitting
+                      ? 'bg-gray-600 cursor-not-allowed text-gray-300'
+                      : 'bg-blue-600 hover:bg-blue-700 text-white'
+                  }`}
+                >
+                  {isResubmitting ? (
+                    <>
+                      <div className="w-3 h-3 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <RotateCcw className="w-3 h-3" />
+                      Resubmit Last
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           </CardContent>
@@ -1934,17 +2139,36 @@ Keep it concise and motivational - this should make them feel good about their t
               <div className="flex gap-3 pt-4">
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
+                  disabled={isSubmittingFeedback}
+                  className={`px-4 py-2 rounded transition-colors flex items-center gap-2 ${
+                    isSubmittingFeedback
+                      ? 'bg-gray-600 cursor-not-allowed text-gray-300'
+                      : 'bg-blue-600 hover:bg-blue-700 text-white'
+                  }`}
                 >
-                  Submit Feedback
+                  {isSubmittingFeedback ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    'Submit Feedback'
+                  )}
                 </button>
                 <button
                   type="button"
+                  disabled={isSubmittingFeedback}
                   onClick={() => {
-                    setShowFeedback(false);
-                    setSelectedSession(null);
+                    if (!isSubmittingFeedback) {
+                      setShowFeedback(false);
+                      setSelectedSession(null);
+                    }
                   }}
-                  className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded transition-colors"
+                  className={`px-4 py-2 rounded transition-colors ${
+                    isSubmittingFeedback
+                      ? 'bg-gray-700 cursor-not-allowed text-gray-400'
+                      : 'bg-gray-600 hover:bg-gray-700 text-white'
+                  }`}
                 >
                   Cancel
                 </button>

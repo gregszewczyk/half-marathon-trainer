@@ -21,6 +21,11 @@ This file tracks all pending improvements, fixes, and feature requests for the H
   - **Implementation**: Add loading states to feedback modals, cross-week analysis UI
 
 ### Bug Fixes
+- [ ] **Fix session feedback submission UX** _(no loading state, allows multiple clicks)_
+  - **Functionality**: Add loading state and disable button during AI processing to prevent duplicate submissions
+  - **Files**: `src/components/training/TrainingCalendar.tsx`
+  - **Implementation**: Add loading state, disable submit button, show "Processing..." message during AI analysis
+  
 - [ ] **Test dynamic week calculation edge cases** _(race dates very close/far)_
   - **Functionality**: Test and fix edge cases where race dates are <4 weeks or >20 weeks away
   - **Files**: `src/app/api/generate-plan/route.ts`, `src/app/dashboard/page.tsx`
@@ -44,6 +49,17 @@ This file tracks all pending improvements, fixes, and feature requests for the H
 ## 🔧 Medium Priority
 
 ### Features & Enhancements
+- [ ] **Permanent session move with "Apply to future weeks" option** _(2025-07-30)_
+  - **Functionality**: When moving sessions (e.g., long run from Saturday to Sunday), offer option to apply change to all future weeks
+  - **Files**: `src/components/training/TrainingCalendar.tsx`, `src/app/api/schedule-change/route.ts`, database schema
+  - **Implementation**: 
+    - Add confirmation modal after drag/drop: "Apply this change to future weeks too?"
+    - Store permanent schedule preferences in user profile or separate table
+    - Update session generation logic to respect permanent moves
+    - Show visual indicator for permanently moved sessions
+    - Allow reverting permanent changes with "Reset to original schedule" option
+    - Consider training periodization when applying permanent moves (e.g., don't move hard sessions before race week)
+  
 - [ ] **Add manual goal time adjustment in AI prediction section**
   - **Functionality**: Allow users to manually override AI-predicted goal times
   - **Files**: `src/components/training/TrainingCalendar.tsx`, `src/app/api/user-profile/route.ts`
@@ -65,6 +81,20 @@ This file tracks all pending improvements, fixes, and feature requests for the H
   - **Implementation**: Aggregate weekly data, generate AI summary, create PDF/email reports
 
 ### UI/UX Improvements
+- [ ] **Streamline dashboard layout - reduce noise before calendar** _(2025-07-30)_
+  - **Functionality**: Minimize clutter above the training calendar, which is the most important content
+  - **Files**: `src/app/dashboard/page.tsx`, `src/components/training/TrainingCalendar.tsx`
+  - **Implementation**: 
+    - **Keep**: Header (Training Dashboard, Welcome, Plan Status, Logout) - makes sense
+    - **Reduce**: Stats row (Week Progress, Training Week, Total Sessions, Plan Type) - make smaller, less prominent
+    - **Remove**: Green "Training Plan Active" bar - duplicate of plan status
+    - **Remove**: "AI Training Calendar Week 1 of 12 Base building phase" header - duplicate info
+    - **Keep**: Week navigation buttons only (move to calendar component)
+    - **Consolidate**: Remove duplicate progress indicators (currently showing 1/4 and 1/5 sessions)
+    - **Relocate**: AI Performance Prediction section - make smaller or move to sidebar/modal
+    - **Enhance**: AI Modifications block - show actual modification list when count > 0
+  - **Goal**: Calendar should be visible immediately after header and minimal stats
+
 - [ ] **Add animations to AI prediction updates**
   - **Functionality**: Smooth transitions when AI predictions change or update
   - **Files**: `src/components/training/TrainingCalendar.tsx`, CSS animation files

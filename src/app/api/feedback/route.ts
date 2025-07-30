@@ -3,8 +3,10 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
+import { PerplexityAIService } from '../../../lib/ai/perplexity_service';
 
 const prisma = new PrismaClient();
+const aiService = new PerplexityAIService();
 
 // 🚀 NEW: Weekly completion detection and AI analysis trigger
 async function checkWeekCompletion(userId: string, weekNumber: number) {
@@ -118,14 +120,87 @@ async function triggerWeeklyAIAnalysis(userId: string, completedWeek: number, we
   }
 }
 
+// 🚀 NEW: Update race time prediction based on recent feedback
+async function updateRaceTimePrediction(userId: string): Promise<string | null> {
+  try {
+    console.log(`🏃 Updating race time prediction for user ${userId}`);
+    
+    // Get recent feedback from last 3-4 sessions for prediction
+    const recentFeedback = await prisma.sessionFeedback.findMany({
+      where: {
+        userId,
+        completed: 'yes',
+        sessionSubType: { in: ['tempo', 'intervals', 'long', 'threshold'] }
+      },
+      orderBy: { submittedAt: 'desc' },
+      take: 5 // Last 5 quality sessions
+    });
+    
+    if (recentFeedback.length < 2) {
+      console.log('⚠️ Not enough recent sessions for prediction update');
+      return null;
+    }
+    
+    // Get user's current goal time
+    const userProfile = await prisma.userProfile.findUnique({
+      where: { userId },
+      select: { targetTime: true }
+    });
+    
+    const currentGoalTime = userProfile?.targetTime || '2:00:00';
+    
+    // Convert to AI service format
+    const sessionFeedbackData = recentFeedback.map(f => ({
+      sessionId: f.sessionId,
+      completed: f.completed as 'yes' | 'no' | 'partial',
+      actualPace: f.actualPace || f.plannedPace || '5:30',
+      difficulty: f.difficulty,
+      rpe: f.rpe,
+      feeling: f.feeling as 'terrible' | 'bad' | 'ok' | 'good' | 'great',
+      comments: f.comments || '',
+      weekNumber: f.week,
+      sessionType: f.sessionSubType || 'easy',
+      targetPace: f.plannedPace || '5:30',
+      targetDistance: f.plannedDistance || 5
+    }));
+    
+    // Call AI prediction service
+    const updatedPrediction = await aiService.predictRaceTime(sessionFeedbackData, currentGoalTime);
+    
+    if (updatedPrediction !== currentGoalTime) {
+      console.log(`🎯 AI updated prediction: ${currentGoalTime} → ${updatedPrediction}`);
+      
+      // Store updated prediction in user profile (store as JSON for now)
+      await prisma.userProfile.update({
+        where: { userId },
+        data: {
+          // Store as JSON until schema migration
+          aiPrediction: JSON.stringify({
+            predictedTime: updatedPrediction,
+            lastUpdate: new Date().toISOString()
+          })
+        }
+      });
+      
+      return updatedPrediction;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('❌ Error updating race prediction:', error);
+    return null;
+  }
+}
+
 // GET - Fetch feedback for a user
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const weekNumber = searchParams.get('weekNumber');
     const userId = searchParams.get('userId');
+    const limit = searchParams.get('limit');
 
-    console.log('📊 GET Feedback request:', { weekNumber, userId });
+    console.log('📊 GET Feedback request:', { weekNumber, userId, limit });
 
     if (!userId) {
       return NextResponse.json(
@@ -143,10 +218,20 @@ export async function GET(request: NextRequest) {
       whereClause.week = parseInt(weekNumber);  // CORRECT: Use 'week' as per your DB
     }
 
-    // Use Prisma typed query - remove orderBy to avoid field name issues
-    const feedback = await prisma.sessionFeedback.findMany({
+    // Use Prisma typed query with optional limit and ordering
+    const queryOptions: any = {
       where: whereClause
-    });
+    };
+    
+    // Add ordering by submission date (most recent first)
+    queryOptions.orderBy = { submittedAt: 'desc' };
+    
+    // Add limit if specified
+    if (limit) {
+      queryOptions.take = parseInt(limit);
+    }
+    
+    const feedback = await prisma.sessionFeedback.findMany(queryOptions);
 
     console.log(`✅ Found ${feedback.length} feedback records for user ${userId}`);
 
@@ -287,9 +372,16 @@ export async function POST(request: NextRequest) {
     // 🚀 NEW: Check if week is completed after feedback submission
     await checkWeekCompletion(userId, weekNumber ? parseInt(weekNumber) : 1);
 
+    // 🚀 NEW: Trigger race time prediction update after significant sessions
+    let updatedPrediction = null;
+    if (sessionSubType && ['tempo', 'intervals', 'long'].includes(sessionSubType.toLowerCase()) && completed === 'yes') {
+      updatedPrediction = await updateRaceTimePrediction(userId);
+    }
+
     return NextResponse.json({
       success: true,
-      message: 'Feedback saved successfully'
+      message: 'Feedback saved successfully',
+      updatedPrediction: updatedPrediction
     });
 
   } catch (error: unknown) {
