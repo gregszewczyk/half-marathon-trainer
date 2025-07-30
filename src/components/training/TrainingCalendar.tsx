@@ -1211,154 +1211,91 @@ Keep it concise and motivational - this should make them feel good about their t
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 px-6">
-        <Card className="bg-gray-800 border-gray-700 hover:bg-gray-750 transition-colors">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wide">Training Focus</h3>
-              <TrendingUp className="w-6 h-6 text-cyan-400" />
-            </div>
-            <p className="text-2xl font-bold text-white">
+      {/* Compact Training Metrics */}
+      <div className="px-6">
+        <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-gray-800/50 rounded-lg border border-gray-700">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="w-4 h-4 text-cyan-400" />
+            <span className="text-sm text-gray-400">Focus:</span>
+            <span className="font-medium text-white">
               {currentWeek <= 4 ? 'Base Building' : 
                currentWeek <= 8 ? 'Build Phase' : 
                currentWeek <= 10 ? 'Peak Phase' : 'Taper Phase'}
-            </p>
-            <p className="text-sm text-gray-400 mt-2">
-              {currentWeek <= 4 ? 'Building aerobic foundation' : 
-               currentWeek <= 8 ? 'Increasing intensity and volume' : 
-               currentWeek <= 10 ? 'Race-specific training' : 'Recovery and preparation'}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gray-800 border-gray-700 hover:bg-gray-750 transition-colors">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wide">Week Progress</h3>
-              <Activity className="w-6 h-6 text-green-400" />
-            </div>
-            <p className="text-2xl font-bold text-white">
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Activity className="w-4 h-4 text-green-400" />
+            <span className="text-sm text-gray-400">Progress:</span>
+            <span className="font-medium text-white">
               {Object.values(weekData).flat().filter(s => s.type === 'running' && s.completed).length}/{Object.values(weekData).flat().filter(s => s.type === 'running').length}
-            </p>
-            <p className="text-sm text-gray-400 mt-2">Running sessions completed</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gray-800 border-gray-700 hover:bg-gray-750 transition-colors">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wide">AI Modifications</h3>
-              <Brain className="w-6 h-6 text-cyan-400" />
-            </div>
-            <p className="text-2xl font-bold text-white">
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Brain className="w-4 h-4 text-cyan-400" />
+            <span className="text-sm text-gray-400">AI Modified:</span>
+            <span className="font-medium text-white">
               {Object.values(weekData).flat().filter(s => s.aiModified).length}
-            </p>
-            <p className="text-sm text-gray-400 mt-2">AI-optimized sessions</p>
-          </CardContent>
-        </Card>
+            </span>
+          </div>
+        </div>
       </div>
 
-      {/* AI Performance Prediction Section */}
-      <div className="px-6 mt-8">
-        <Card className="bg-gradient-to-r from-gray-800 to-gray-700 border-gray-600 hover:from-gray-750 hover:to-gray-700 transition-all duration-300">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full flex items-center justify-center">
-                  <Brain className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-white">AI Performance Prediction</h3>
-                  <p className="text-sm text-gray-400">Based on your recent training data</p>
-                </div>
-              </div>
+      {/* Compact AI Performance Prediction */}
+      <div className="px-6 mt-4">
+        <div className="flex flex-wrap items-center justify-between gap-4 p-3 bg-gray-800/50 rounded-lg border border-gray-700">
+          <div className="flex items-center gap-3">
+            <Brain className="w-5 h-5 text-cyan-400" />
+            <div>
+              <span className="text-sm font-medium text-white">AI Prediction</span>
               {isUpdatingPrediction && (
-                <div className="flex items-center gap-2 text-cyan-400">
-                  <div className="w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
-                  <span className="text-sm">Analyzing...</span>
+                <div className="flex items-center gap-1 mt-1">
+                  <div className="w-3 h-3 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+                  <span className="text-xs text-cyan-400">Analyzing...</span>
                 </div>
               )}
             </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Goal Time */}
-              <div className="text-center p-4 bg-gray-700/50 rounded-lg border border-gray-600">
-                <div className="text-xs text-gray-400 mb-2 font-medium uppercase tracking-wide">Your Goal</div>
-                <div className="text-2xl font-bold text-green-400 font-mono mb-1">{goalTime}</div>
-                <div className="text-xs text-gray-400">{formatRaceDisplay()}</div>
-              </div>
-              
-              {/* AI Predicted Time */}
-              <div className="text-center p-4 bg-gray-700/50 rounded-lg border border-gray-600 relative">
-                <div className="text-xs text-gray-400 mb-2 font-medium uppercase tracking-wide">AI Prediction</div>
-                <div className={`text-2xl font-bold font-mono mb-1 ${
-                  predictedTime === goalTime ? 'text-cyan-400' :
-                  predictedTime < goalTime ? 'text-green-400' : 'text-yellow-400'
-                }`}>
-                  {predictedTime}
-                </div>
-                <div className="text-xs text-gray-400">
-                  {predictedTime === goalTime ? 'On track for goal' :
-                   predictedTime < goalTime ? 'Ahead of goal!' : 'Working toward goal'}
-                </div>
-                
-                {/* Comparison indicator */}
-                {predictedTime !== goalTime && (
-                  <div className={`absolute -top-1 -right-1 w-3 h-3 rounded-full ${
-                    predictedTime < goalTime ? 'bg-green-400' : 'bg-yellow-400'
-                  }`} />
-                )}
+          </div>
+          
+          <div className="flex items-center gap-6">
+            <div className="text-center">
+              <div className="text-xs text-gray-400">Goal</div>
+              <div className="text-sm font-bold text-green-400 font-mono">{goalTime}</div>
+            </div>
+            <div className="text-center">
+              <div className="text-xs text-gray-400">Predicted</div>
+              <div className={`text-sm font-bold font-mono ${
+                predictedTime === goalTime ? 'text-cyan-400' :
+                predictedTime < goalTime ? 'text-green-400' : 'text-yellow-400'
+              }`}>
+                {predictedTime}
               </div>
             </div>
             
-            {/* Prediction Details */}
-            <div className="mt-4 p-3 bg-gray-800/50 rounded-lg">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-400">Last Updated:</span>
-                <span className="text-gray-300">
-                  {lastPredictionUpdate 
-                    ? lastPredictionUpdate.toLocaleString('en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
-                    : 'Not yet updated'
-                  }
-                </span>
-              </div>
-              <div className="text-xs text-gray-500 mt-1">
-                🤖 AI analyzes your RPE, pace, and completion data to predict your race performance
-              </div>
-            </div>
-            
-            {/* 🧪 TEST: Resubmit Last Session Button */}
-            <div className="mt-4 p-3 bg-blue-900/20 rounded-lg border border-blue-400/30">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-medium text-blue-300">🧪 Test AI Predictions</div>
-                  <div className="text-xs text-blue-200 mt-1">Resubmit your last session to test AI prediction updates</div>
-                </div>
-                <button
-                  onClick={handleResubmitLastSession}
-                  disabled={isResubmitting}
-                  className={`px-3 py-1.5 rounded text-sm transition-colors flex items-center gap-2 ${
-                    isResubmitting
-                      ? 'bg-gray-600 cursor-not-allowed text-gray-300'
-                      : 'bg-blue-600 hover:bg-blue-700 text-white'
-                  }`}
-                >
-                  {isResubmitting ? (
-                    <>
-                      <div className="w-3 h-3 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
-                      Processing...
-                    </>
-                  ) : (
-                    <>
-                      <RotateCcw className="w-3 h-3" />
-                      Resubmit Last
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            {/* Test Button */}
+            <button
+              onClick={handleResubmitLastSession}
+              disabled={isResubmitting}
+              className={`px-2 py-1 rounded text-xs transition-colors flex items-center gap-1 ${
+                isResubmitting
+                  ? 'bg-gray-600 cursor-not-allowed text-gray-300'
+                  : 'bg-blue-600 hover:bg-blue-700 text-white'
+              }`}
+              title="🧪 Test AI Predictions - Resubmit your last session"
+            >
+              {isResubmitting ? (
+                <>
+                  <div className="w-3 h-3 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
+                  Test
+                </>
+              ) : (
+                <>
+                  <RotateCcw className="w-3 h-3" />
+                  🧪 Test
+                </>
+              )}
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Motivational AI Banner */}
