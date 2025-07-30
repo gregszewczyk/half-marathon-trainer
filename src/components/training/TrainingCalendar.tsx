@@ -4,6 +4,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react';
 import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Clock, MapPin, Activity, Brain, RotateCcw, AlertCircle, X } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
+import { PerplexityAIService, SessionFeedback } from '@/lib/ai/perplexity_service';
 
 // Enhanced interfaces for auto-adjustment system
 interface Session {
@@ -181,6 +182,8 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
     }
   }, [initialWeek]);
   const [predictedTime, setPredictedTime] = useState('2:00:00');
+  const [isUpdatingPrediction, setIsUpdatingPrediction] = useState(false);
+  const [lastPredictionUpdate, setLastPredictionUpdate] = useState<Date | null>(null);
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const [showFeedback, setShowFeedback] = useState(false);
   const [difficultyValue, setDifficultyValue] = useState(5);
@@ -687,6 +690,9 @@ Keep it concise and motivational - this should make them feel good about their t
         setShowMotivationalAI(true);
         // Don't auto-hide - let user close manually to read the message
 
+        // 🚀 NEW: Update AI predicted time based on recent performance
+        await updateAIPredictedTime();
+
         setShowFeedback(false);
       } else {
         // Add error handling for non-200 responses
@@ -696,6 +702,65 @@ Keep it concise and motivational - this should make them feel good about their t
       }
     } catch (error) {
       console.error('Error submitting feedback:', error);
+    }
+  };
+
+  // 🤖 AI Predicted Time Update Function
+  const updateAIPredictedTime = async () => {
+    if (!userId) return;
+    
+    setIsUpdatingPrediction(true);
+    try {
+      console.log('🤖 Updating AI predicted time based on recent sessions');
+      
+      // Get recent feedback data (last 5 sessions)
+      const recentFeedbackPromises = [];
+      for (let week = Math.max(1, currentWeek - 2); week <= currentWeek; week++) {
+        recentFeedbackPromises.push(
+          fetch(`/api/feedback?userId=${userId}&weekNumber=${week}`)
+            .then(res => res.ok ? res.json() : null)
+        );
+      }
+      
+      const feedbackResponses = await Promise.all(recentFeedbackPromises);
+      const recentSessions: SessionFeedback[] = [];
+      
+      feedbackResponses.forEach(response => {
+        if (response?.feedback) {
+          response.feedback.forEach((fb: any) => {
+            if (fb.completed && fb.completed !== '' && fb.sessionType) {
+              recentSessions.push({
+                sessionId: fb.id || '',
+                completed: fb.completed as 'yes' | 'no' | 'partial',
+                actualPace: fb.actualPace || '',
+                difficulty: fb.difficulty || 5,
+                rpe: fb.rpe || 5,
+                feeling: fb.feeling || 'ok' as 'terrible' | 'bad' | 'ok' | 'good' | 'great',
+                comments: fb.comments || '',
+                weekNumber: fb.weekNumber || currentWeek,
+                sessionType: fb.sessionType || 'running',
+                targetPace: fb.plannedPace || '5:00',
+                targetDistance: fb.plannedDistance || 5
+              });
+            }
+          });
+        }
+      });
+      
+      if (recentSessions.length >= 2) {
+        const aiService = new PerplexityAIService();
+        const newPrediction = await aiService.predictRaceTime(recentSessions, goalTime);
+        
+        if (newPrediction && newPrediction !== goalTime) {
+          setPredictedTime(newPrediction);
+          setLastPredictionUpdate(new Date());
+          console.log(`🏃 AI updated predicted time: ${newPrediction}`);
+        }
+      }
+    } catch (error) {
+      console.error('❌ AI prediction update failed:', error);
+    } finally {
+      setIsUpdatingPrediction(false);
     }
   };
 
@@ -860,6 +925,78 @@ Keep it concise and motivational - this should make them feel good about their t
               {Object.values(weekData).flat().filter(s => s.aiModified).length}
             </p>
             <p className="text-sm text-gray-400 mt-2">AI-optimized sessions</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* AI Performance Prediction Section */}
+      <div className="px-6 mt-8">
+        <Card className="bg-gradient-to-r from-gray-800 to-gray-700 border-gray-600 hover:from-gray-750 hover:to-gray-700 transition-all duration-300">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full flex items-center justify-center">
+                  <Brain className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white">AI Performance Prediction</h3>
+                  <p className="text-sm text-gray-400">Based on your recent training data</p>
+                </div>
+              </div>
+              {isUpdatingPrediction && (
+                <div className="flex items-center gap-2 text-cyan-400">
+                  <div className="w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+                  <span className="text-sm">Analyzing...</span>
+                </div>
+              )}
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Goal Time */}
+              <div className="text-center p-4 bg-gray-700/50 rounded-lg border border-gray-600">
+                <div className="text-xs text-gray-400 mb-2 font-medium uppercase tracking-wide">Your Goal</div>
+                <div className="text-2xl font-bold text-green-400 font-mono mb-1">{goalTime}</div>
+                <div className="text-xs text-gray-400">Manchester Half Marathon</div>
+              </div>
+              
+              {/* AI Predicted Time */}
+              <div className="text-center p-4 bg-gray-700/50 rounded-lg border border-gray-600 relative">
+                <div className="text-xs text-gray-400 mb-2 font-medium uppercase tracking-wide">AI Prediction</div>
+                <div className={`text-2xl font-bold font-mono mb-1 ${
+                  predictedTime === goalTime ? 'text-cyan-400' :
+                  predictedTime < goalTime ? 'text-green-400' : 'text-yellow-400'
+                }`}>
+                  {predictedTime}
+                </div>
+                <div className="text-xs text-gray-400">
+                  {predictedTime === goalTime ? 'On track for goal' :
+                   predictedTime < goalTime ? 'Ahead of goal!' : 'Working toward goal'}
+                </div>
+                
+                {/* Comparison indicator */}
+                {predictedTime !== goalTime && (
+                  <div className={`absolute -top-1 -right-1 w-3 h-3 rounded-full ${
+                    predictedTime < goalTime ? 'bg-green-400' : 'bg-yellow-400'
+                  }`} />
+                )}
+              </div>
+            </div>
+            
+            {/* Prediction Details */}
+            <div className="mt-4 p-3 bg-gray-800/50 rounded-lg">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-400">Last Updated:</span>
+                <span className="text-gray-300">
+                  {lastPredictionUpdate 
+                    ? lastPredictionUpdate.toLocaleString('en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+                    : 'Not yet updated'
+                  }
+                </span>
+              </div>
+              <div className="text-xs text-gray-500 mt-1">
+                🤖 AI analyzes your RPE, pace, and completion data to predict your race performance
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -1450,12 +1587,13 @@ Keep it concise and motivational - this should make them feel good about their t
               <div className="text-sm text-blue-200">
                 <div className="flex items-center gap-2 mb-2">
                   <Brain className="w-4 h-4" />
-                  <strong>AI will automatically adjust your training based on this feedback:</strong>
+                  <strong>AI intelligently adapts your training when needed:</strong>
                 </div>
                 <ul className="text-xs space-y-1 ml-6">
-                  <li>• High RPE/Difficulty (≥8) → Easier sessions, slower paces</li>
-                  <li>• Low RPE/Difficulty (≤3) → Harder sessions, faster paces</li>
-                  <li>• Goal time may be updated based on performance trends</li>
+                  <li>• <strong>RPE 8 within target</strong> + positive comments → <span className="text-green-300">No changes (perfect execution!)</span></li>
+                  <li>• <strong>RPE 9+</strong> or negative feedback → <span className="text-yellow-300">Easier sessions, recovery focus</span></li>
+                  <li>• <strong>Consistently low RPE</strong> (≤3) → <span className="text-blue-300">Progressive intensity increases</span></li>
+                  <li>• <strong>Your comments</strong> are heavily weighted in AI decisions</li>
                 </ul>
               </div>
             </div>

@@ -36,21 +36,110 @@ export class PerplexityAIService {
   }
 
   /**
+   * Analyze comments for negative indicators that suggest need for adaptation
+   */
+  private hasNegativeIndicators(comments: string): boolean {
+    if (!comments || comments.trim().length === 0) return false;
+    
+    const comment = comments.toLowerCase();
+    
+    // Strong negative indicators
+    const strongNegatives = [
+      'pain', 'hurt', 'injury', 'injured', 'strain', 'pulled',
+      'couldn\'t finish', 'had to stop', 'too hard', 'exhausted',
+      'struggled', 'terrible', 'awful', 'miserable', 'burning'
+    ];
+    
+    // Moderate negative indicators
+    const moderateNegatives = [
+      'difficult', 'tough', 'challenging', 'hard', 'tired',
+      'heavy legs', 'sluggish', 'slow', 'struggled a bit'
+    ];
+    
+    // Positive indicators that override moderate negatives
+    const positives = [
+      'felt good', 'strong', 'controlled', 'comfortable',
+      'within target', 'on target', 'as expected', 'perfect',
+      'nailed it', 'spot on', 'right pace', 'good effort'
+    ];
+    
+    // Check for positive indicators first
+    const hasPositives = positives.some(positive => comment.includes(positive));
+    if (hasPositives) return false;
+    
+    // Check for strong negatives (always trigger adaptation)
+    const hasStrongNegatives = strongNegatives.some(negative => comment.includes(negative));
+    if (hasStrongNegatives) return true;
+    
+    // Check for moderate negatives (only trigger if no positives)
+    const hasModerateNegatives = moderateNegatives.some(negative => comment.includes(negative));
+    return hasModerateNegatives;
+  }
+
+  /**
    * Main AI trigger - determines if training adaptations are needed
+   * Now uses smarter logic that considers context and comment sentiment
    */
   shouldTriggerAI(feedback: SessionFeedback): boolean {
-    // High RPE (≥8)
-    if (feedback.rpe >= 8) return true;
-    
-    // High difficulty (≥8)
-    if (feedback.difficulty >= 8) return true;
-    
-    // Session not completed
+    // Session not completed - always needs attention
     if (feedback.completed === 'no') return true;
     
-    // Feeling terrible or bad
+    // Poor feelings - always needs attention
     if (feedback.feeling === 'terrible' || feedback.feeling === 'bad') return true;
     
+    // VERY high RPE (≥9) - always concerning regardless of target
+    if (feedback.rpe >= 9) return true;
+    
+    // VERY high difficulty (≥9) - always concerning regardless of target  
+    if (feedback.difficulty >= 9) return true;
+    
+    // Moderate RPE (8) - only trigger if comments indicate real problems
+    if (feedback.rpe === 8) {
+      // If no comments provided, be conservative and don't trigger
+      if (!feedback.comments || feedback.comments.trim().length === 0) {
+        console.log('🤖 RPE 8 with no comments - assuming within target range, no adaptation needed');
+        return false;
+      }
+      
+      // Check comment sentiment
+      if (this.hasNegativeIndicators(feedback.comments)) {
+        console.log('🤖 RPE 8 with negative comments - triggering adaptation');
+        return true;
+      } else {
+        console.log('🤖 RPE 8 with neutral/positive comments - no adaptation needed');
+        return false;
+      }
+    }
+    
+    // Moderate difficulty (8) - same logic as RPE
+    if (feedback.difficulty === 8) {
+      if (!feedback.comments || feedback.comments.trim().length === 0) {
+        console.log('🤖 Difficulty 8 with no comments - assuming acceptable, no adaptation needed');
+        return false;
+      }
+      
+      if (this.hasNegativeIndicators(feedback.comments)) {
+        console.log('🤖 Difficulty 8 with negative comments - triggering adaptation');
+        return true;
+      } else {
+        console.log('🤖 Difficulty 8 with neutral/positive comments - no adaptation needed');
+        return false;
+      }
+    }
+    
+    // Check for strong negative comments even with lower RPE/difficulty
+    if (feedback.comments && this.hasNegativeIndicators(feedback.comments)) {
+      // Only trigger if comments indicate serious issues (pain, injury, etc.)
+      const comment = feedback.comments.toLowerCase();
+      const seriousIssues = ['pain', 'hurt', 'injury', 'injured', 'strain', 'pulled', 'couldn\'t finish'];
+      if (seriousIssues.some(issue => comment.includes(issue))) {
+        console.log('🤖 Serious issue detected in comments - triggering adaptation');
+        return true;
+      }
+    }
+    
+    // Default: no adaptation needed
+    console.log('🤖 All indicators within acceptable range - no adaptation needed');
     return false;
   }
 
@@ -164,6 +253,14 @@ export class PerplexityAIService {
     const phase = this.getTrainingPhase(currentWeek);
     const recentTrend = this.analyzeRecentTrend(recentFeedback);
 
+    // Determine if this might be expected performance
+    const isHighButExpected = (feedback.rpe === 8 || feedback.difficulty === 8) && 
+                              feedback.comments && 
+                              !this.hasNegativeIndicators(feedback.comments);
+    
+    const contextNote = isHighButExpected ? 
+      "\n⚠️  IMPORTANT: RPE/Difficulty of 8 may be EXPECTED for this session type. Check if adaptation is actually needed before recommending changes." : "";
+
     return `
 HALF MARATHON TRAINING ADAPTATION REQUEST
 
@@ -172,11 +269,11 @@ Current Session:
 - Session: ${feedback.sessionType}
 - Target: ${feedback.targetDistance}km at ${feedback.targetPace}/km
 - Completion: ${feedback.completed}
-- RPE: ${feedback.rpe}/10
-- Difficulty: ${feedback.difficulty}/10
+- RPE: ${feedback.rpe}/10 ${feedback.rpe === 8 ? '(moderate-high)' : feedback.rpe >= 9 ? '(very high)' : ''}
+- Difficulty: ${feedback.difficulty}/10 ${feedback.difficulty === 8 ? '(moderate-high)' : feedback.difficulty >= 9 ? '(very high)' : ''}
 - Feeling: ${feedback.feeling}
 - Actual Pace: ${feedback.actualPace || 'Not recorded'}
-- Comments: ${feedback.comments || 'None'}
+- Comments: ${feedback.comments || 'None'}${contextNote}
 
 Recent Training Trend (last 3 sessions):
 ${recentTrend}
@@ -186,6 +283,12 @@ CONSTRAINTS:
 - Training for Manchester Half Marathon (flat course, October weather)
 - Training with MadeRunning club (Mon 5PM, Wed 5AM, Sat 9AM)
 - Goal: Sub-2 hours (currently targeting ~1:50-1:55)
+
+IMPORTANT GUIDANCE:
+- RPE 8 during tempo/interval sessions may be PERFECT execution, not a problem
+- Only recommend DECREASE if runner shows signs of overreaching/injury risk
+- Consider runner's comments heavily - positive comments suggest good execution
+- Focus on maintaining current training if performance is on target
 
 Please provide:
 1. IMMEDIATE RECOMMENDATIONS (2-3 specific actions for next sessions)
