@@ -471,11 +471,21 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
       details = ['Recovery & stretching'];
     } else if (session.type === 'gym') {
       mainText = `${session.subType.toUpperCase()} DAY`;
-      details = [`Duration: ${session.duration || '60min'}`];
+      details = []; // No additional details needed for gym sessions
     } else if (session.type === 'running') {
-      const madeRunningText = session.madeRunning ? ' (MadeRunning)' : '';
+      // Extract club name from mainSet if it's a club session
+      let clubText = '';
+      if (session.isRunningClub && session.mainSet) {
+        console.log('🔍 Debug mainSet for club:', session.mainSet);
+        const clubMatch = session.mainSet.match(/with (.+?)(?:\s|$)/);
+        console.log('🔍 Club match result:', clubMatch);
+        if (clubMatch) {
+          clubText = ` (${clubMatch[1]})`;
+        }
+      }
+      
       const mainSetDistance = getMainSetDistance(session);
-      mainText = `${session.subType.charAt(0).toUpperCase() + session.subType.slice(1)} ${mainSetDistance}K${madeRunningText}`;
+      mainText = `${session.subType.charAt(0).toUpperCase() + session.subType.slice(1)} ${mainSetDistance}K${clubText}`;
       
       const workoutTime = calculateDuration(session.distance || 5, session.pace || '6:30');
       
@@ -901,7 +911,7 @@ Keep it concise and motivational - this should make them feel good about their t
                           </div>
                         )}
                         
-                        {session.targetRPE && (
+                        {session.targetRPE && session.type !== 'gym' && (
                           <div className="text-xs opacity-75 space-y-1">
                             <div className="flex items-center justify-between">
                               <span>Target RPE: {session.targetRPE.min}-{session.targetRPE.max}/10</span>
