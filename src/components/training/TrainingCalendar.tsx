@@ -1699,15 +1699,27 @@ Keep it concise and motivational - this should make them feel good about their t
                 )}
               </div>
 
-              {/* AI Training Adjustment Predictions */}
-              {(difficultyValue >= 8 || rpeValue >= 8) && (
+              {/* Smart AI Training Predictions */}
+              {(difficultyValue >= 9 || rpeValue >= 9) && (
                 <div className="p-3 bg-orange-900/30 rounded border border-orange-400">
                   <div className="flex items-center gap-2 text-orange-300">
                     <TrendingDown className="w-4 h-4" />
-                    <span className="text-sm font-semibold">AI will make training EASIER</span>
+                    <span className="text-sm font-semibold">AI may adjust training</span>
                   </div>
                   <p className="text-xs text-orange-200 mt-1">
-                    High intensity detected. Next sessions will have slower paces and reduced volume.
+                    Very high intensity detected. AI will review your comments and recent trends.
+                  </p>
+                </div>
+              )}
+
+              {(difficultyValue === 8 || rpeValue === 8) && (
+                <div className="p-3 bg-blue-900/30 rounded border border-blue-400">
+                  <div className="flex items-center gap-2 text-blue-300">
+                    <Brain className="w-4 h-4" />
+                    <span className="text-sm font-semibold">AI analyzing performance</span>
+                  </div>
+                  <p className="text-xs text-blue-200 mt-1">
+                    RPE/Difficulty 8 detected. AI will check if this matches your target intensity and read your comments.
                   </p>
                 </div>
               )}
@@ -1716,10 +1728,10 @@ Keep it concise and motivational - this should make them feel good about their t
                 <div className="p-3 bg-green-900/30 rounded border border-green-400">
                   <div className="flex items-center gap-2 text-green-300">
                     <TrendingUp className="w-4 h-4" />
-                    <span className="text-sm font-semibold">AI will make training HARDER</span>
+                    <span className="text-sm font-semibold">AI may increase intensity</span>
                   </div>
                   <p className="text-xs text-green-200 mt-1">
-                    Low intensity detected. Next sessions will have faster paces to improve your goal time.
+                    Consistently low intensity. AI may suggest progressive increases to improve fitness.
                   </p>
                 </div>
               )}
