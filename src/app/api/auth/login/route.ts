@@ -23,12 +23,10 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('🔍 Attempting to find user in database...');
-    // Find user
+    // Find user (simplified query first)
     const user = await prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
-      include: {
-        profile: true // Include profile for dashboard
-      }
+      where: { email: email.toLowerCase() }
+      // Temporarily removed include to test if that's the issue
     });
     console.log('👤 User found:', user ? 'yes' : 'no');
 
@@ -60,7 +58,7 @@ export async function POST(request: NextRequest) {
       userId: user.id,
       name: user.name,
       email: user.email,
-      hasProfile: !!user.profile
+      hasProfile: false // Temporarily hardcode since we removed profile include
     });
 
   } catch (error) {
