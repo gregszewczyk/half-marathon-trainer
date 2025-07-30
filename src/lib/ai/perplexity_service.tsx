@@ -574,4 +574,185 @@ Provide a single predicted time in HH:MM:SS format with brief justification.
     const timeMatch = prediction.match(/\d{1,2}:\d{2}:\d{2}/);
     return timeMatch ? timeMatch[0] : fallback;
   }
+
+  /**
+   * Generate AI-powered warm-up and cool-down routines
+   */
+  async generateWarmupCooldown(
+    sessionType: string,
+    userProfile: {
+      fitnessLevel: string;
+      injuryHistory?: string;
+      age?: number;
+    },
+    timeOfDay?: 'morning' | 'afternoon' | 'evening'
+  ): Promise<{ warmup: string; cooldown: string }> {
+    try {
+      if (!this.apiKey) {
+        console.warn('No Perplexity API key - using fallback warm-up and cool-down');
+        return this.getFallbackWarmupCooldown(sessionType, userProfile);
+      }
+
+      const prompt = this.buildWarmupCooldownPrompt(sessionType, userProfile, timeOfDay);
+      
+      const response = await fetch(this.baseUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'sonar-pro',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an expert running coach specializing in personalized warm-up and cool-down routines. Provide specific, actionable routines.'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          max_tokens: 300,
+          temperature: 0.7,
+        }),
+      });
+
+      if (!response.ok) {
+        console.error('AI warm-up generation failed:', response.status);
+        return this.getFallbackWarmupCooldown(sessionType, userProfile);
+      }
+
+      const data = await response.json();
+      const aiResponse = data.choices?.[0]?.message?.content;
+
+      if (!aiResponse) {
+        console.error('Empty AI response for warm-up generation');
+        return this.getFallbackWarmupCooldown(sessionType, userProfile);
+      }
+
+      return this.parseWarmupCooldownResponse(aiResponse, sessionType, userProfile);
+
+    } catch (error) {
+      console.error('Error generating AI warm-up/cool-down:', error);
+      return this.getFallbackWarmupCooldown(sessionType, userProfile);
+    }
+  }
+
+  /**
+   * Build prompt for warm-up and cool-down generation
+   */
+  private buildWarmupCooldownPrompt(
+    sessionType: string,
+    userProfile: { fitnessLevel: string; injuryHistory?: string; age?: number },
+    timeOfDay?: string
+  ): string {
+    const sessionContext = {
+      'easy': 'Easy aerobic run - main session is already at easy conversational pace',
+      'long': 'Long run - main session is at easy pace but longer duration requires good preparation',
+      'tempo': 'Tempo run - sustained moderate-hard effort, needs proper activation',
+      'intervals': 'Interval training - high intensity repeats, needs thorough preparation and recovery'
+    };
+
+    return `
+GENERATE PERSONALIZED WARM-UP AND COOL-DOWN ROUTINES
+
+SESSION TYPE: ${sessionType.toUpperCase()}
+Session Context: ${sessionContext[sessionType as keyof typeof sessionContext] || 'Standard running session'}
+
+RUNNER PROFILE:
+- Fitness Level: ${userProfile.fitnessLevel}
+- Age: ${userProfile.age || 'Not specified'}
+- Injury History: ${userProfile.injuryHistory || 'None specified'}
+- Time of Day: ${timeOfDay || 'Not specified'}
+
+IMPORTANT GUIDELINES:
+- For EASY/LONG runs: No warm-up jogging needed (main run is already easy pace)
+- For TEMPO/INTERVALS: Include gradual build-up with easy jogging
+- Consider injury history for targeted activation/recovery
+- Morning sessions need more activation, evening sessions focus on mobility
+- Keep routines practical and time-efficient (5-20 minutes max)
+
+REQUIREMENTS:
+1. WARM-UP: Specific routine with timing and exercises
+2. COOL-DOWN: Specific routine with timing and recovery focus
+
+Format response as:
+WARMUP: [specific routine with timing]
+COOLDOWN: [specific routine with timing]
+
+Be concise but specific with exercise names and durations.
+`;
+  }
+
+  /**
+   * Parse AI response for warm-up and cool-down
+   */
+  private parseWarmupCooldownResponse(
+    aiResponse: string,
+    sessionType: string,
+    userProfile: { fitnessLevel: string; injuryHistory?: string }
+  ): { warmup: string; cooldown: string } {
+    try {
+      const warmupMatch = aiResponse.match(/WARMUP:\s*(.+?)(?=COOLDOWN:|$)/i);
+      const cooldownMatch = aiResponse.match(/COOLDOWN:\s*(.+?)$/i);
+
+      const warmup = warmupMatch?.[1]?.trim() || this.getFallbackWarmup(sessionType);
+      const cooldown = cooldownMatch?.[1]?.trim() || this.getFallbackCooldown(sessionType);
+
+      return { warmup, cooldown };
+    } catch (error) {
+      console.error('Error parsing warm-up/cool-down response:', error);
+      return this.getFallbackWarmupCooldown(sessionType, userProfile);
+    }
+  }
+
+  /**
+   * Fallback warm-up and cool-down when AI is unavailable
+   */
+  private getFallbackWarmupCooldown(
+    sessionType: string,
+    userProfile: { fitnessLevel: string; injuryHistory?: string }
+  ): { warmup: string; cooldown: string } {
+    return {
+      warmup: this.getFallbackWarmup(sessionType),
+      cooldown: this.getFallbackCooldown(sessionType)
+    };
+  }
+
+  /**
+   * Get fallback warm-up routine
+   */
+  private getFallbackWarmup(sessionType: string): string {
+    switch (sessionType) {
+      case 'easy': 
+        return '5min dynamic stretching: leg swings, hip circles, ankle rolls';
+      case 'long': 
+        return '8min preparation: 3min walking + 5min dynamic stretching';
+      case 'tempo': 
+        return '15min build-up: 10min easy jog + 4x100m strides + dynamic stretching';
+      case 'intervals': 
+        return '20min activation: 12min easy jog + 6x100m strides + dynamic stretching';
+      default: 
+        return '10min easy jog + dynamic stretching';
+    }
+  }
+
+  /**
+   * Get fallback cool-down routine
+   */
+  private getFallbackCooldown(sessionType: string): string {
+    switch (sessionType) {
+      case 'easy': 
+        return '8min recovery: 3min walk + 5min stretching (calves, quads, hamstrings)';
+      case 'long': 
+        return '15min comprehensive: 5min walk + 10min full body stretching routine';
+      case 'tempo': 
+        return '12min recovery: 5min easy jog + 7min stretching focus on legs';
+      case 'intervals': 
+        return '15min complete recovery: 8min easy jog + 7min comprehensive stretching';
+      default: 
+        return '8min: 3min walk + 5min stretching';
+    }
+  }
 }

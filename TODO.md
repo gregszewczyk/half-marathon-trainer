@@ -96,19 +96,15 @@ This file tracks all pending improvements, fixes, and feature requests for the H
   - **Implementation**: Aggregate weekly data, generate AI summary, create PDF/email reports
 
 ### UI/UX Improvements
-- [ ] **Streamline dashboard layout - reduce noise before calendar** _(2025-07-30)_
-  - **Functionality**: Minimize clutter above the training calendar, which is the most important content
-  - **Files**: `src/app/dashboard/page.tsx`, `src/components/training/TrainingCalendar.tsx`
+- [ ] **Add regenerate warm-ups/cool-downs button to settings or calendar** _(2025-07-30)_
+  - **Functionality**: Allow users to regenerate warm-ups and cool-downs for existing sessions with improved AI logic
+  - **Files**: `src/components/training/TrainingCalendar.tsx`, `src/app/api/regenerate-warmups/route.ts` (already created)
   - **Implementation**: 
-    - **Keep**: Header (Training Dashboard, Welcome, Plan Status, Logout) - makes sense
-    - **Reduce**: Stats row (Week Progress, Training Week, Total Sessions, Plan Type) - make smaller, less prominent
-    - **Remove**: Green "Training Plan Active" bar - duplicate of plan status
-    - **Remove**: "AI Training Calendar Week 1 of 12 Base building phase" header - duplicate info
-    - **Keep**: Week navigation buttons only (move to calendar component)
-    - **Consolidate**: Remove duplicate progress indicators (currently showing 1/4 and 1/5 sessions)
-    - **Relocate**: AI Performance Prediction section - make smaller or move to sidebar/modal
-    - **Enhance**: AI Modifications block - show actual modification list when count > 0
-  - **Goal**: Calendar should be visible immediately after header and minimal stats
+    - Add "Regenerate Warm-ups" button in calendar header or settings
+    - Show loading state during regeneration process
+    - Display success/failure statistics after completion
+    - Consider user confirmation before regenerating (it's a bulk operation)
+    - API endpoint already created and ready to use
 
 - [ ] **Add animations to AI prediction updates**
   - **Functionality**: Smooth transitions when AI predictions change or update
@@ -246,6 +242,29 @@ This file tracks all pending improvements, fixes, and feature requests for the H
 ## ✅ Recently Completed
 
 ### 2025-07-30
+- [x] **Streamline dashboard layout - reduce noise before calendar** - Completed comprehensive UI cleanup to prioritize calendar visibility
+  - **Files Modified**: `src/app/dashboard/page.tsx`, `src/components/training/TrainingCalendar.tsx`
+  - **Implementation**: 
+    - **Dashboard Stats**: Converted 4 large stat cards into compact horizontal strip with icons
+    - **Training Metrics**: Condensed 3 large metric cards (Training Focus, Week Progress, AI Modifications) into single compact row
+    - **AI Performance Prediction**: Compressed large prediction section into compact horizontal display with Goal vs Predicted times
+    - **Week Navigation**: Made buttons smaller, moved to right side, reduced text ("Previous" → "Prev")
+    - **Test Button**: Integrated AI test functionality into compact prediction row with tooltip
+    - **Rest Day Fix**: Removed RPE indicators from rest day blocks (unnecessary for rest sessions)
+    - **Result**: Calendar now appears much higher on page with significantly less visual noise above it
+
+- [x] **Implement AI-generated warm-ups and cool-downs** - Replaced hardcoded routines with intelligent, contextual warm-up and cool-down generation
+  - **Files Modified**: `src/lib/ai/perplexity_service.tsx`, `src/app/api/generate-plan/route.ts`
+  - **Files Created**: `src/app/api/regenerate-warmups/route.ts`, `src/app/api/test-regenerate/route.ts`
+  - **Implementation**: 
+    - **Fixed Redundancy**: Easy/long runs no longer have unnecessary warm-up jogs at same pace
+    - **Smart Fallbacks**: Logical routines per session type (dynamic stretching for easy, build-up for tempo/intervals)
+    - **AI Service Integration**: Added `generateWarmupCooldown()` method considering fitness level, injury history, age, time of day
+    - **Enhanced Cool-downs**: Better recovery focus with session-specific routines
+    - **Regeneration API**: Created endpoint to update existing sessions with improved logic
+    - **Async Architecture**: Properly implemented async/await throughout plan generation pipeline
+    - **Result**: Much more logical and personalized warm-up/cool-down routines that eliminate redundant easy-pace warm-ups
+
 - [x] **Add unit tests for AI logic** - Created comprehensive test coverage for current working functionalities
   - **Files Created**: `src/lib/ai/perplexity_service.test.tsx`, `src/components/training/TrainingCalendar.test.tsx`, `src/app/api/generate-plan/route.test.ts`, `tests/setup.ts`
   - **Implementation**: 

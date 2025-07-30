@@ -205,7 +205,7 @@ async function generateAITrainingPlan(userId: string, data: OnboardingData, tota
       console.log(`🗓️ Generating AI sessions for week ${week}`);
       
       const weekPlan = weeklyProgression.weeks[week - 1];
-      const weekSessions = generateAIWeekSessions(
+      const weekSessions = await generateAIWeekSessions(
         userId, 
         week, 
         data, 
@@ -223,7 +223,7 @@ async function generateAITrainingPlan(userId: string, data: OnboardingData, tota
   } catch (error) {
     console.error('❌ AI plan generation failed:', error);
     // Fallback to static generation
-    return generateStaticTrainingPlan(userId, data);
+    return await generateStaticTrainingPlan(userId, data);
   }
 }
 
@@ -506,14 +506,14 @@ Respond with JSON only:
   }
 }
 
-function generateAIWeekSessions(
+async function generateAIWeekSessions(
   userId: string,
   week: number,
   data: OnboardingData,
   paceZones: any,
   weekPlan: any,
   aiAnalysis: any
-): GeneratedSessionCreate[] {
+): Promise<GeneratedSessionCreate[]> {
   const sessions: GeneratedSessionCreate[] = [];
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   
@@ -540,9 +540,9 @@ function generateAIWeekSessions(
         scheduledTime: clubSession.time,
         isRunningClub: true,
         isMoveable: false,
-        warmup: getWarmup(sessionType),
+        warmup: await getWarmup(sessionType),
         mainSet: getMainSet(sessionType, weekPlan, true, data.runningClub),
-        cooldown: getCooldown(sessionType),
+        cooldown: await getCooldown(sessionType),
         targetRPE: getTargetRPE(sessionType),
         aiModified: false,
         originalData: null,
@@ -593,9 +593,9 @@ function generateAIWeekSessions(
         scheduledTime: getPreferredTime(data.timePreferences, 'running'),
         isRunningClub: false,
         isMoveable: true,
-        warmup: getWarmup(sessionType),
+        warmup: await getWarmup(sessionType),
         mainSet: getMainSet(sessionType, weekPlan, false),
-        cooldown: getCooldown(sessionType),
+        cooldown: await getCooldown(sessionType),
         targetRPE: getTargetRPE(sessionType),
         aiModified: false,
         originalData: null,
@@ -687,7 +687,7 @@ function generateAIWeekSessions(
 
 // 🔧 STATIC FALLBACK FUNCTIONS (when AI fails)
 
-function generateStaticTrainingPlan(userId: string, data: OnboardingData): GeneratedSessionCreate[] {
+async function generateStaticTrainingPlan(userId: string, data: OnboardingData): Promise<GeneratedSessionCreate[]> {
   const sessions: GeneratedSessionCreate[] = [];
   
   // Calculate pace zones
@@ -698,19 +698,19 @@ function generateStaticTrainingPlan(userId: string, data: OnboardingData): Gener
   console.log(`📊 Static plan will be ${totalWeeks} weeks long`);
   
   for (let week = 1; week <= totalWeeks; week++) {
-    const weekSessions = generateStaticWeekSessions(userId, week, data, paceZones);
+    const weekSessions = await generateStaticWeekSessions(userId, week, data, paceZones);
     sessions.push(...weekSessions);
   }
   
   return sessions;
 }
 
-function generateStaticWeekSessions(
+async function generateStaticWeekSessions(
   userId: string, 
   week: number, 
   data: OnboardingData, 
   paceZones: any
-): GeneratedSessionCreate[] {
+): Promise<GeneratedSessionCreate[]> {
   const sessions: GeneratedSessionCreate[] = [];
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   
@@ -740,9 +740,9 @@ function generateStaticWeekSessions(
         scheduledTime: clubSession.time,
         isRunningClub: true,
         isMoveable: false,
-        warmup: getWarmup(sessionType),
+        warmup: await getWarmup(sessionType),
         mainSet: getMainSet(sessionType, weekPlan, true, data.runningClub),
-        cooldown: getCooldown(sessionType),
+        cooldown: await getCooldown(sessionType),
         targetRPE: getTargetRPE(sessionType),
         aiModified: false,
         originalData: null,
@@ -792,9 +792,9 @@ function generateStaticWeekSessions(
         scheduledTime: getPreferredTime(data.timePreferences, 'running'),
         isRunningClub: false,
         isMoveable: true,
-        warmup: getWarmup(sessionType),
+        warmup: await getWarmup(sessionType),
         mainSet: getMainSet(sessionType, weekPlan, false),
-        cooldown: getCooldown(sessionType),
+        cooldown: await getCooldown(sessionType),
         targetRPE: getTargetRPE(sessionType),
         aiModified: false,
         originalData: null,
@@ -1027,13 +1027,20 @@ function getPaceForType(sessionType: string, paceZones: any): string {
   }
 }
 
-function getWarmup(sessionType: string): string {
+async function getWarmup(sessionType: string, userProfile?: any): Promise<string> {
+  // For now, use improved fallback logic
+  // TODO: Integrate full AI generation with user profile data
   switch (sessionType) {
-    case 'easy': return '10 min easy jog + dynamic stretching';
-    case 'tempo': return '15 min easy + 4x100m strides';
-    case 'intervals': return '20 min easy + 6x100m strides';
-    case 'long': return '15 min easy jog + dynamic stretching';
-    default: return '10 min easy jog + dynamic stretching';
+    case 'easy': 
+      return '5min dynamic stretching: leg swings, hip circles, ankle rolls';
+    case 'long': 
+      return '8min preparation: 3min walking + 5min dynamic stretching';
+    case 'tempo': 
+      return '15min build-up: 10min easy jog + 4x100m strides + dynamic stretching';
+    case 'intervals': 
+      return '20min activation: 12min easy jog + 6x100m strides + dynamic stretching';
+    default: 
+      return '10min easy jog + dynamic stretching';
   }
 }
 
@@ -1070,13 +1077,20 @@ function getMainSet(sessionType: string, weekPlan: any, isClub: boolean, clubNam
   }
 }
 
-function getCooldown(sessionType: string): string {
+async function getCooldown(sessionType: string, userProfile?: any): Promise<string> {
+  // For now, use improved fallback logic
+  // TODO: Integrate full AI generation with user profile data
   switch (sessionType) {
-    case 'easy': return '5 min walk + stretching';
-    case 'tempo': return '10 min easy jog + stretching';
-    case 'intervals': return '15 min easy jog + stretching';
-    case 'long': return '10 min walk + full stretching routine';
-    default: return '5 min walk + stretching';
+    case 'easy': 
+      return '8min recovery: 3min walk + 5min stretching (calves, quads, hamstrings)';
+    case 'long': 
+      return '15min comprehensive: 5min walk + 10min full body stretching routine';
+    case 'tempo': 
+      return '12min recovery: 5min easy jog + 7min stretching focus on legs';
+    case 'intervals': 
+      return '15min complete recovery: 8min easy jog + 7min comprehensive stretching';
+    default: 
+      return '8min: 3min walk + 5min stretching';
   }
 }
 

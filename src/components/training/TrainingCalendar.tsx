@@ -2,7 +2,7 @@
 // Based on your paste.txt - no function name changes, just UI fixes
 
 import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react';
-import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Clock, MapPin, Activity, Brain, RotateCcw, AlertCircle, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Clock, MapPin, Activity, Brain, RotateCcw, AlertCircle, X, Settings } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { PerplexityAIService, SessionFeedback } from '@/lib/ai/perplexity_service';
 
@@ -252,6 +252,9 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
   
   // 🧪 TEST: Resubmit last session functionality
   const [isResubmitting, setIsResubmitting] = useState(false);
+  
+  // 🧪 TEST: Regenerate warm-ups functionality  
+  const [isRegeneratingWarmups, setIsRegeneratingWarmups] = useState(false);
 
   // Add this after your existing state variables
   const [isMobile, setIsMobile] = useState(false);
@@ -614,6 +617,56 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
       alert('Failed to resubmit last session. Check console for details.');
     } finally {
       setIsResubmitting(false);
+    }
+  };
+
+  // 🧪 TEST: Regenerate warm-ups and cool-downs for all sessions
+  const handleRegenerateWarmups = async () => {
+    if (isRegeneratingWarmups || !userId) return;
+
+    const confirmed = confirm(
+      'This will regenerate warm-ups and cool-downs for ALL your running sessions with the new AI logic. Continue?'
+    );
+    
+    if (!confirmed) return;
+
+    setIsRegeneratingWarmups(true);
+    
+    try {
+      console.log('🔄 Starting warm-up regeneration...');
+      
+      const response = await fetch('/api/regenerate-warmups', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userId })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to regenerate: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('✅ Warm-ups regenerated:', result);
+
+      // Show success message with stats
+      const { stats } = result;
+      alert(
+        `🎉 Warm-ups regenerated successfully!\n\n` +
+        `📊 Updated: ${stats.updatedSessions}/${stats.totalSessions} sessions\n` +
+        `🤖 AI Generated: ${stats.aiGenerated}\n` +
+        `🔧 Fallback Used: ${stats.fallbackUsed}`
+      );
+
+      // Refresh the sessions to show updated warm-ups/cool-downs
+      window.location.reload();
+
+    } catch (error) {
+      console.error('❌ Error regenerating warm-ups:', error);
+      alert('Failed to regenerate warm-ups. Check console for details.');
+    } finally {
+      setIsRegeneratingWarmups(false);
     }
   };
 
@@ -1185,28 +1238,28 @@ Keep it concise and motivational - this should make them feel good about their t
       )}
 
       {/* Week Navigation */}
-      <div className="flex items-center justify-center p-6">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-end px-6 py-3">
+        <div className="flex items-center gap-2">
           <button
             onClick={() => setCurrentWeek(prev => Math.max(1, prev - 1))}
             disabled={currentWeek <= 1}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium transition-colors"
+            className="flex items-center gap-1 px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm transition-colors"
           >
-            <ChevronLeft className="w-5 h-5" />
-            Previous
+            <ChevronLeft className="w-4 h-4" />
+            Prev
           </button>
           
-          <div className="px-6 py-2 bg-cyan-600 rounded-lg text-white font-bold text-lg min-w-[120px] text-center">
+          <div className="px-3 py-1 bg-cyan-600 rounded text-white font-medium text-sm min-w-[80px] text-center">
             Week {currentWeek}
           </div>
           
           <button
             onClick={() => setCurrentWeek(prev => Math.min(totalWeeks, prev + 1))}
             disabled={currentWeek >= totalWeeks}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium transition-colors"
+            className="flex items-center gap-1 px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm transition-colors"
           >
             Next
-            <ChevronRight className="w-5 h-5" />
+            <ChevronRight className="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -1294,6 +1347,30 @@ Keep it concise and motivational - this should make them feel good about their t
                 </>
               )}
             </button>
+            
+            {/* Regenerate Warm-ups Button */}
+            <button
+              onClick={handleRegenerateWarmups}
+              disabled={isRegeneratingWarmups}
+              className={`px-2 py-1 rounded text-xs transition-colors flex items-center gap-1 ${
+                isRegeneratingWarmups
+                  ? 'bg-gray-600 cursor-not-allowed text-gray-300'
+                  : 'bg-green-600 hover:bg-green-700 text-white'
+              }`}
+              title="🔄 Regenerate Warm-ups - Update all sessions with new AI logic"
+            >
+              {isRegeneratingWarmups ? (
+                <>
+                  <div className="w-3 h-3 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
+                  Updating...
+                </>
+              ) : (
+                <>
+                  <Settings className="w-3 h-3" />
+                  🔄 Regenerate
+                </>
+              )}
+            </button>
           </div>
         </div>
       </div>
@@ -1371,7 +1448,7 @@ Keep it concise and motivational - this should make them feel good about their t
                           </div>
                         )}
                         
-                        {session.targetRPE && session.type !== 'gym' && (
+                        {session.targetRPE && session.type !== 'gym' && session.type !== 'rest' && (
                           <div className="text-xs opacity-75 space-y-1">
                             <div>
                               <span>Target RPE: {session.targetRPE.min}-{session.targetRPE.max}/10</span>
