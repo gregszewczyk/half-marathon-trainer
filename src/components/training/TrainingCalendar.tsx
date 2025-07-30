@@ -426,6 +426,13 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
         legs: 'bg-purple-700/80 text-purple-100 border-purple-600'
       };
       baseColor = gymColors[session.subType as keyof typeof gymColors] || 'bg-blue-700/80 text-blue-100 border-blue-600';
+    } else if (session.type === 'cross_training') {
+      const crossTrainingColors = {
+        swimming: 'bg-teal-700/80 text-teal-100 border-teal-600',
+        yoga: 'bg-pink-700/80 text-pink-100 border-pink-600',
+        cycling: 'bg-yellow-700/80 text-yellow-100 border-yellow-600'
+      };
+      baseColor = crossTrainingColors[session.subType as keyof typeof crossTrainingColors] || 'bg-teal-700/80 text-teal-100 border-teal-600';
     } else if (session.type === 'running') {
       const runColors = {
         easy: 'bg-green-700/80 text-green-100 border-green-600',
@@ -472,6 +479,9 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
     } else if (session.type === 'gym') {
       mainText = `${session.subType.toUpperCase()} DAY`;
       details = []; // No additional details needed for gym sessions
+    } else if (session.type === 'cross_training') {
+      mainText = `${session.subType.toUpperCase()}`;
+      details = [`Duration: ${session.duration || '45min'}`];
     } else if (session.type === 'running') {
       // Extract club name from mainSet if it's a club session
       let clubText = '';
