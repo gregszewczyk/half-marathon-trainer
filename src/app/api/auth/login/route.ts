@@ -6,7 +6,9 @@ const prisma = new PrismaClient();
 
 export async function POST(request: NextRequest) {
   try {
-    console.log('🚀 Login attempt started');
+    // Test database connection first
+    await prisma.$connect();
+    
     const { email, password } = await request.json();
     console.log('📧 Email received:', email ? 'present' : 'missing');
     console.log('🔑 Password received:', password ? 'present' : 'missing');
