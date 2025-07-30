@@ -491,39 +491,51 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
       
       switch (session.subType) {
         case 'easy':
-          const easyMainTime = workoutTime - 15;
+          const easyMainSetDistance = getMainSetDistance(session);
+          const easyPaceSeconds = paceToSeconds(session.pace || '6:30');
+          const easyMainTime = Math.round((easyMainSetDistance * easyPaceSeconds) / 60);
+          const easyTotalTime = 10 + easyMainTime + 5; // warmup + main + cooldown
           details = [
             'WU: 10min easy jog',
             `Main: ${easyMainTime}min@${session.pace}/km`,
             'CD: 5min walk',
-            `Total: ${workoutTime}min`
+            `Total: ${easyTotalTime}min`
           ];
           break;
         case 'tempo':
-          const tempoMainTime = Math.round((session.distance || 5) * 6); // ~6min per km for main set
+          const mainSetDistance = getMainSetDistance(session);
+          const paceSeconds = paceToSeconds(session.pace || '5:30');
+          const tempoMainTime = Math.round((mainSetDistance * paceSeconds) / 60);
+          const totalTime = 15 + tempoMainTime + 10; // warmup + main + cooldown
           details = [
             'WU: 15min easy + strides',
             `Tempo: ${tempoMainTime}min@${session.pace}/km`,
             'CD: 10min easy',
-            `Total: ${workoutTime}min`
+            `Total: ${totalTime}min`
           ];
           break;
         case 'long':
-          const longMainTime = workoutTime - 25;
+          const longMainSetDistance = getMainSetDistance(session);
+          const longPaceSeconds = paceToSeconds(session.pace || '6:30');
+          const longMainTime = Math.round((longMainSetDistance * longPaceSeconds) / 60);
+          const longTotalTime = 15 + longMainTime + 10; // warmup + main + cooldown
           details = [
             'WU: 15min easy',
             `Long: ${longMainTime}min progressive`,
             'CD: 10min walk',
-            `Total: ${workoutTime}min`
+            `Total: ${longTotalTime}min`
           ];
           break;
         case 'intervals':
-          const intervalMainTime = Math.round((session.distance || 4) * 5); // ~5min per km for intervals
+          const intervalMainSetDistance = getMainSetDistance(session);
+          const intervalPaceSeconds = paceToSeconds(session.pace || '5:00');
+          const intervalMainTime = Math.round((intervalMainSetDistance * intervalPaceSeconds) / 60);
+          const intervalTotalTime = 15 + intervalMainTime + 10; // warmup + main + cooldown
           details = [
             'WU: 15min easy',
             `Intervals: ${intervalMainTime}min@${session.pace}/km`,
             'CD: 10min easy',
-            `Total: ${workoutTime}min`
+            `Total: ${intervalTotalTime}min`
           ];
           break;
         default:
@@ -913,20 +925,23 @@ Keep it concise and motivational - this should make them feel good about their t
                         
                         {session.targetRPE && session.type !== 'gym' && (
                           <div className="text-xs opacity-75 space-y-1">
-                            <div className="flex items-center justify-between">
+                            <div>
                               <span>Target RPE: {session.targetRPE.min}-{session.targetRPE.max}/10</span>
-                              <div className="flex gap-0.5">
-                                {[...Array(10)].map((_, i) => (
-                                  <div
-                                    key={i}
-                                    className={`w-1.5 h-1.5 rounded-full ${
-                                      session.targetRPE && i + 1 >= session.targetRPE.min && i + 1 <= session.targetRPE.max
-                                        ? 'bg-cyan-400'
-                                        : 'bg-gray-600'
-                                    }`}
-                                  />
-                                ))}
-                              </div>
+                            </div>
+                            <div className="flex gap-0.5">
+                              {[...Array(10)].map((_, i) => (
+                                <div
+                                  key={i}
+                                  className={`w-1.5 h-1.5 rounded-full ${
+                                    session.targetRPE && i + 1 >= session.targetRPE.min && i + 1 <= session.targetRPE.max
+                                      ? 'bg-cyan-400'
+                                      : 'bg-gray-600'
+                                  }`}
+                                />
+                              ))}
+                              <span className="ml-2 text-xs opacity-60">
+                                {[...Array(10)].map((_, i) => (i + 1).toString()).join(' ')}
+                              </span>
                             </div>
                             {session.targetRPE?.description && (
                               <div className="text-xs opacity-60 italic">
