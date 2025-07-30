@@ -8,12 +8,13 @@ import { Card, CardContent } from '@/components/ui/card';
 // Enhanced interfaces for auto-adjustment system
 interface Session {
   id: string;
-  type: 'running' | 'gym' | 'rest';
+  type: 'running' | 'gym' | 'rest' | 'cross_training';
   subType: 'easy' | 'tempo' | 'intervals' | 'long' | 'push' | 'pull' | 'legs';
   distance?: number;
   pace?: string;
   duration?: string;
   madeRunning?: boolean;
+  isRunningClub?: boolean; // For club session detection
   time?: string;
   rpe?: number;
   completed?: boolean; // Now comes from API response
@@ -33,6 +34,7 @@ interface AITrainingCalendarProps {
   userId?: string;
   sessionData?: any[];
   initialWeek?: number;
+  totalWeeks?: number;
 }
 
 interface RPETarget {
@@ -145,7 +147,7 @@ const useGeneratedSessions = (userId: string | undefined) => {
   return state;
 };
 
-const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'default', sessionData, initialWeek = 1 }) => {
+const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'default', sessionData, initialWeek = 1, totalWeeks = 12 }) => {
   console.log('🔍 TrainingCalendar initialized with userId:', userId);
   console.log('📊 Session data received:', sessionData ? `${sessionData.length} sessions` : 'no session data');
   
@@ -781,7 +783,7 @@ Keep it concise and motivational - this should make them feel good about their t
         <div>
           <h2 className="text-3xl font-bold text-white mb-2">AI Training Calendar</h2>
           <p className="text-gray-400">
-            Week {currentWeek} of 12 • {
+            Week {currentWeek} of {totalWeeks} • {
               currentWeek <= 4 ? 'Base Building Phase' : 
               currentWeek <= 8 ? 'Build Phase' : 
               currentWeek <= 10 ? 'Peak Phase' : 'Taper Phase'
@@ -804,8 +806,8 @@ Keep it concise and motivational - this should make them feel good about their t
           </div>
           
           <button
-            onClick={() => setCurrentWeek(prev => Math.min(12, prev + 1))}
-            disabled={currentWeek >= 12}
+            onClick={() => setCurrentWeek(prev => Math.min(totalWeeks, prev + 1))}
+            disabled={currentWeek >= totalWeeks}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium transition-colors"
           >
             Next
@@ -1709,12 +1711,12 @@ Keep it concise and motivational - this should make them feel good about their t
                   <span className="text-sm font-semibold text-green-400">Training Progress</span>
                 </div>
                 <p className="text-xs text-green-200">
-                  Week {currentWeek} of 12 • Target: Sub-2:00 Half Marathon • Race: Oct 12, 2025
+                  Week {currentWeek} of {totalWeeks} • Target: Sub-2:00 Half Marathon • Race: Oct 12, 2025
                 </p>
                 <div className="mt-2 bg-green-900/30 rounded-full h-2">
                   <div 
                     className="bg-green-400 h-2 rounded-full transition-all duration-500"
-                    style={{ width: `${(currentWeek / 12) * 100}%` }}
+                    style={{ width: `${(currentWeek / totalWeeks) * 100}%` }}
                   />
                 </div>
               </div>
@@ -1758,7 +1760,8 @@ const arePropsEqual = (prevProps: AITrainingCalendarProps, nextProps: AITraining
   return (
     prevProps.userId === nextProps.userId &&
     prevProps.initialWeek === nextProps.initialWeek &&
-    prevProps.sessionData === nextProps.sessionData
+    prevProps.sessionData === nextProps.sessionData &&
+    prevProps.totalWeeks === nextProps.totalWeeks
   );
 };
 

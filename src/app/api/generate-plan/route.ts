@@ -134,7 +134,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate AI-powered plan
-    const sessions = await generateAITrainingPlan(userId, onboardingData);
+    const sessions = await generateAITrainingPlan(userId, onboardingData, totalWeeks);
     
     // Save to database
     const result = await prisma.generatedSession.createMany({
@@ -151,7 +151,7 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    console.log(`✅ Generated ${result.count} AI sessions for user ${userId}`);
+    console.log(`✅ Generated ${result.count} AI sessions for user ${userId} over ${totalWeeks} weeks`);
 
     return NextResponse.json({
       success: true,
@@ -159,7 +159,7 @@ export async function POST(request: NextRequest) {
       plan: {
         raceType: onboardingData.raceType,
         targetTime: onboardingData.targetTime,
-        totalWeeks: 12,
+        totalWeeks: totalWeeks, // 🚀 Dynamic total weeks based on race date
         trainingDaysPerWeek: onboardingData.trainingDaysPerWeek,
         aiGenerated: true
       }
@@ -180,10 +180,12 @@ export async function POST(request: NextRequest) {
 
 // 🤖 AI PLAN GENERATION FUNCTIONS
 
-async function generateAITrainingPlan(userId: string, data: OnboardingData): Promise<GeneratedSessionCreate[]> {
+async function generateAITrainingPlan(userId: string, data: OnboardingData, totalWeeks: number): Promise<GeneratedSessionCreate[]> {
   console.log(`🤖 Starting AI plan generation for user ${userId}`);
+  console.log(`📅 Using ${totalWeeks} weeks for training plan`);
   
   try {
+    
     // Step 1: Analyze user profile with AI
     const aiAnalysis = await analyzeUserProfile(data);
     console.log(`📊 AI analysis complete: ${aiAnalysis.fitnessLevel}`);

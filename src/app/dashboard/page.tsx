@@ -20,6 +20,7 @@ interface PlanStatus {
 interface TrainingStats {
   completionPercentage: number;
   currentWeek: number;
+  totalWeeks: number;
   totalSessions: number;
   completedSessions: number;
   loading: boolean;
@@ -67,6 +68,7 @@ export default function Dashboard() {
   const [trainingStats, setTrainingStats] = useState<TrainingStats>({
     completionPercentage: 0,
     currentWeek: 1,
+    totalWeeks: 12,
     totalSessions: 0,
     completedSessions: 0,
     loading: true
@@ -171,11 +173,24 @@ export default function Dashboard() {
         const currentWeek = await calculateCurrentWeek(userId);
         console.log(`📅 Calculated current week: ${currentWeek}`);
         
-        // Simple stats calculation from current week feedback
-        const response = await fetch(`/api/feedback?userId=${userId}&weekNumber=${currentWeek}`);
+        // Get all sessions to calculate total weeks and current week stats
+        const [feedbackResponse, sessionsResponse] = await Promise.all([
+          fetch(`/api/feedback?userId=${userId}&weekNumber=${currentWeek}`),
+          fetch(`/api/training-plan?userId=${userId}`)
+        ]);
         
-        if (response.ok) {
-          const data = await response.json();
+        let totalWeeks = 12; // Default fallback
+        if (sessionsResponse.ok) {
+          const sessionsData = await sessionsResponse.json();
+          const sessions = sessionsData.sessions || [];
+          if (sessions.length > 0) {
+            totalWeeks = Math.max(...sessions.map((s: any) => s.week));
+            console.log(`📊 Calculated total weeks from sessions: ${totalWeeks}`);
+          }
+        }
+        
+        if (feedbackResponse.ok) {
+          const data = await feedbackResponse.json();
           const feedback = Array.isArray(data.feedback) ? data.feedback : [];
           
           // Calculate basic stats
@@ -186,6 +201,7 @@ export default function Dashboard() {
           setTrainingStats({
             completionPercentage,
             currentWeek, // 🚀 FIXED: Use calculated current week
+            totalWeeks, // 🚀 NEW: Dynamic total weeks from sessions
             totalSessions: totalRunningSessions,
             completedSessions: completedCount,
             loading: false
@@ -197,6 +213,7 @@ export default function Dashboard() {
           setTrainingStats({
             completionPercentage: 0,
             currentWeek, // 🚀 FIXED: Use calculated current week even on API failure
+            totalWeeks, // Use calculated total weeks even on feedback failure
             totalSessions: 4,
             completedSessions: 0,
             loading: false
@@ -210,6 +227,7 @@ export default function Dashboard() {
         setTrainingStats({
           completionPercentage: 0,
           currentWeek: await calculateCurrentWeek(userId), // 🚀 FIXED: Calculate current week even on error
+          totalWeeks: 12, // Default fallback on error
           totalSessions: 4,
           completedSessions: 0,
           loading: false
@@ -378,7 +396,7 @@ export default function Dashboard() {
                 <h3 className="text-sm font-medium text-gray-400">Training Week</h3>
                 <div className="text-2xl">📅</div>
               </div>
-              <div className="text-3xl font-bold text-white">{trainingStats.currentWeek}/12</div>
+              <div className="text-3xl font-bold text-white">{trainingStats.currentWeek}/{trainingStats.totalWeeks}</div>
               <p className="text-sm text-gray-400 mt-1">Current training week</p>
             </div>
 
@@ -427,6 +445,7 @@ export default function Dashboard() {
             userId={userId} 
             sessionData={memoizedSessionData}
             initialWeek={trainingStats.currentWeek} // 🚀 FIXED: Pass current week to calendar
+            totalWeeks={trainingStats.totalWeeks} // 🚀 NEW: Pass dynamic total weeks to calendar
             key={`calendar-${userId}-${memoizedSessionData.length}`}
           />
         </div>
