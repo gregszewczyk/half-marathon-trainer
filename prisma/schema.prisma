@@ -82,6 +82,11 @@ model UserProfile {
   onboardingComplete Boolean @default(false) // Full onboarding completed
   weeklyAnalysis  String? // JSON string storing weekly AI analysis results
   
+  // 🚀 NEW: AI Prediction Storage
+  aiPredictedTime String? // AI-predicted race time (e.g., "1:45:30")
+  lastPredictionUpdate DateTime? // When AI prediction was last updated
+  predictionHistory String? // JSON array of historical predictions for accuracy tracking
+  
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   
@@ -157,7 +162,7 @@ model TrainingPlan {
   @@map("training_plans")
 }
 
-// ✅ SessionFeedback (unchanged - preserves existing data)
+// 🚀 ENHANCED: SessionFeedback with weather data for AI-powered analysis
 model SessionFeedback {
   id              String   @id @default(cuid())
   userId          String
@@ -176,6 +181,14 @@ model SessionFeedback {
   feeling        String
   comments       String?
   submittedAt    DateTime  // Matches DB
+  
+  // 🚀 NEW: Weather data for AI-powered analysis
+  weatherTemp        Float?    // Temperature in Celsius at session time
+  weatherConditions  String?   // "sunny", "cloudy", "rainy", "snowy", "stormy", "foggy"  
+  weatherWindSpeed   Float?    // Wind speed in km/h
+  weatherHumidity    Float?    // Humidity percentage (0-100)
+  weatherDescription String?   // Human-readable weather description
+  weatherTimestamp   Int?      // Unix timestamp of weather data
   
   // Relationships
   user           User         @relation("UserSessionFeedback", fields: [userId], references: [id], onDelete: Cascade)

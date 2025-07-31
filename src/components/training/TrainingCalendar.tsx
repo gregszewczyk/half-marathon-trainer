@@ -205,6 +205,17 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
   const [predictedTime, setPredictedTime] = useState('2:00:00');
   const [isUpdatingPrediction, setIsUpdatingPrediction] = useState(false);
   const [lastPredictionUpdate, setLastPredictionUpdate] = useState<Date | null>(null);
+
+  // 🚀 NEW: Load AI predicted time from userProfile when available
+  useEffect(() => {
+    if (userProfile?.aiPredictedTime) {
+      setPredictedTime(userProfile.aiPredictedTime);
+      if (userProfile.lastPredictionUpdate) {
+        setLastPredictionUpdate(new Date(userProfile.lastPredictionUpdate));
+      }
+      console.log(`🎯 Loaded AI prediction from database: ${userProfile.aiPredictedTime}`);
+    }
+  }, [userProfile]);
   const [crossWeekModifications, setCrossWeekModifications] = useState<any[]>([]);
   const [showCrossWeekModal, setShowCrossWeekModal] = useState(false);
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);

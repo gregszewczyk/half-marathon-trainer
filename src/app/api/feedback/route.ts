@@ -4,9 +4,51 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import { PerplexityAIService } from '../../../lib/ai/perplexity_service';
+import { WeatherService } from '../../../lib/weather/weatherService';
 
 const prisma = new PrismaClient();
 const aiService = new PerplexityAIService();
+const weatherService = new WeatherService();
+
+// 🚀 NEW: Fetch weather data for session
+async function fetchSessionWeatherData(userId: string, sessionDate: Date) {
+  try {
+    // Get user's location from profile
+    const userProfile = await prisma.userProfile.findUnique({
+      where: { userId },
+      select: { location: true }
+    });
+    
+    if (!userProfile?.location) {
+      console.log('⚠️ No location set for user, skipping weather data');
+      return null;
+    }
+    
+    console.log(`🌤️ Fetching weather data for ${userProfile.location} on ${sessionDate.toDateString()}`);
+    
+    const weatherData = await weatherService.getHistoricalWeather(
+      userProfile.location,
+      sessionDate
+    );
+    
+    if (weatherData) {
+      console.log(`✅ Weather data fetched: ${weatherData.temperature}°C, ${weatherData.conditions}`);
+      return {
+        weatherTemp: weatherData.temperature,
+        weatherConditions: weatherData.conditions,
+        weatherWindSpeed: weatherData.windSpeed,
+        weatherHumidity: weatherData.humidity,
+        weatherDescription: weatherData.description,
+        weatherTimestamp: weatherData.timestamp
+      };
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('❌ Error fetching weather data:', error);
+    return null;
+  }
+}
 
 // 🚀 NEW: Weekly completion detection and AI analysis trigger
 async function checkWeekCompletion(userId: string, weekNumber: number) {
@@ -170,10 +212,53 @@ async function updateRaceTimePrediction(userId: string): Promise<string | null> 
     if (updatedPrediction !== currentGoalTime) {
       console.log(`🎯 AI updated prediction: ${currentGoalTime} → ${updatedPrediction}`);
       
-      // TODO: Store updated prediction in database when schema updated
-      // Currently disabled due to missing aiPredictedTime field in UserProfile schema
-      // See TODO: "Add AI prediction storage to database schema"
-      console.log(`💾 Would store AI prediction: ${updatedPrediction} (awaiting schema update)`);
+      // 🚀 NEW: Store updated prediction in database with history tracking
+      try {
+        // Get current prediction history
+        const currentProfile = await prisma.userProfile.findUnique({
+          where: { userId }
+        });
+        
+        // Parse existing history or create new array
+        let predictionHistory = [];
+        if ((currentProfile as any)?.predictionHistory) {
+          try {
+            predictionHistory = JSON.parse((currentProfile as any).predictionHistory);
+          } catch (error) {
+            console.warn('Could not parse prediction history, starting fresh');
+            predictionHistory = [];
+          }
+        }
+        
+        // Add new prediction to history
+        predictionHistory.push({
+          prediction: updatedPrediction,
+          previousPrediction: (currentProfile as any)?.aiPredictedTime || currentGoalTime,
+          timestamp: new Date().toISOString(),
+          sessionCount: sessionFeedbackData.length,
+          triggeredBy: sessionFeedbackData[0]?.sessionType || 'unknown'
+        });
+        
+        // Keep only last 20 predictions to avoid bloat
+        if (predictionHistory.length > 20) {
+          predictionHistory = predictionHistory.slice(-20);
+        }
+        
+        // Update user profile with new prediction and history
+        await prisma.userProfile.update({
+          where: { userId },
+          data: {
+            aiPredictedTime: updatedPrediction,
+            lastPredictionUpdate: new Date(),
+            predictionHistory: JSON.stringify(predictionHistory)
+          } as any
+        });
+        
+        console.log(`💾 Stored AI prediction: ${updatedPrediction} with history (${predictionHistory.length} entries)`);
+      } catch (error) {
+        console.error('❌ Error storing AI prediction:', error);
+        // Don't fail the entire request if prediction storage fails
+      }
       
       return updatedPrediction;
     }
@@ -319,6 +404,15 @@ export async function POST(request: NextRequest) {
       // Update existing feedback
       console.log('📝 Updating existing feedback for:', sessionId);
       
+      // Fetch weather data if session was actually attempted (completed or partial) and no weather data exists
+      let weatherData = null;
+      if ((completed === 'yes' || completed === 'partial') && !(existingFeedback as any).weatherTemp) {
+        // Calculate session date based on week and day
+        const sessionDate = new Date();
+        sessionDate.setDate(sessionDate.getDate() - ((weekNumber - 1) * 7) - (7 - ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].indexOf(day.toLowerCase())));
+        weatherData = await fetchSessionWeatherData(userId, sessionDate);
+      }
+      
       await prisma.sessionFeedback.update({
         where: { id: existingFeedback.id },
         data: {
@@ -327,8 +421,16 @@ export async function POST(request: NextRequest) {
           difficulty: difficulty ? parseInt(difficulty) : 5,
           rpe: rpe ? parseInt(rpe) : 5,
           feeling: feeling || 'okay',
-          comments: comments || null
-          // Remove submittedAt since it doesn't exist in the model
+          comments: comments || null,
+          // Add weather data if fetched
+          ...(weatherData && {
+            weatherTemp: weatherData.weatherTemp,
+            weatherConditions: weatherData.weatherConditions,
+            weatherWindSpeed: weatherData.weatherWindSpeed,
+            weatherHumidity: weatherData.weatherHumidity,
+            weatherDescription: weatherData.weatherDescription,
+            weatherTimestamp: weatherData.weatherTimestamp
+          } as any)
         }
       });
       
@@ -336,6 +438,15 @@ export async function POST(request: NextRequest) {
     } else {
       // Create new feedback
       console.log('📝 Creating new feedback for sessionId:', sessionId);
+      
+      // Fetch weather data if session was actually attempted (completed or partial)
+      let weatherData = null;
+      if (completed === 'yes' || completed === 'partial') {
+        // Calculate session date based on week and day
+        const sessionDate = new Date();
+        sessionDate.setDate(sessionDate.getDate() - ((weekNumber - 1) * 7) - (7 - ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].indexOf(day.toLowerCase())));
+        weatherData = await fetchSessionWeatherData(userId, sessionDate);
+      }
       
       await prisma.sessionFeedback.create({
         data: {
@@ -355,7 +466,16 @@ export async function POST(request: NextRequest) {
           rpe: rpe ? parseInt(rpe) : 5,
           feeling: feeling || 'okay',
           comments: comments || null,
-          submittedAt: new Date() // Add submittedAt as required by the model
+          submittedAt: new Date(), // Add submittedAt as required by the model
+          // Add weather data if fetched
+          ...(weatherData && {
+            weatherTemp: weatherData.weatherTemp,
+            weatherConditions: weatherData.weatherConditions,
+            weatherWindSpeed: weatherData.weatherWindSpeed,
+            weatherHumidity: weatherData.weatherHumidity,
+            weatherDescription: weatherData.weatherDescription,
+            weatherTimestamp: weatherData.weatherTimestamp
+          } as any)
         }
       });
       

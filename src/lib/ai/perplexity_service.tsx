@@ -10,6 +10,12 @@ export interface SessionFeedback {
   sessionType: string; // 'easy', 'tempo', 'intervals', 'long', etc.
   targetPace: string;
   targetDistance: number;
+  // 🚀 NEW: Weather data for enhanced AI analysis
+  weatherTemp?: number; // Temperature in Celsius
+  weatherConditions?: string; // "sunny", "cloudy", "rainy", etc.
+  weatherWindSpeed?: number; // Wind speed in km/h
+  weatherHumidity?: number; // Humidity percentage
+  weatherDescription?: string; // Human-readable description
 }
 
 export interface TrainingAdaptation {
@@ -338,11 +344,58 @@ export class PerplexityAIService {
       const data = await response.json();
       const prediction = data.choices[0]?.message?.content || '';
       
-      return this.extractTimeFromPrediction(prediction, currentGoalTime);
+      console.log('🤖 AI Raw Response:', prediction);
+      const extractedTime = this.extractTimeFromPrediction(prediction, currentGoalTime);
+      console.log('🎯 Extracted Time:', extractedTime);
+      
+      return extractedTime;
     } catch (error) {
       console.error('Prediction API Error:', error);
       return currentGoalTime;
     }
+  }
+
+  /**
+   * Format weather context for AI prompts
+   */
+  private formatWeatherContext(feedback: SessionFeedback): string {
+    if (!feedback.weatherTemp && !feedback.weatherConditions) {
+      return 'Weather: Not available';
+    }
+
+    const weatherParts = [];
+    
+    if (feedback.weatherTemp !== undefined) {
+      weatherParts.push(`${feedback.weatherTemp}°C`);
+    }
+    
+    if (feedback.weatherConditions) {
+      weatherParts.push(feedback.weatherConditions);
+    }
+    
+    if (feedback.weatherWindSpeed && feedback.weatherWindSpeed > 10) {
+      weatherParts.push(`${feedback.weatherWindSpeed}km/h wind`);
+    }
+    
+    if (feedback.weatherHumidity && feedback.weatherHumidity > 70) {
+      weatherParts.push(`${feedback.weatherHumidity}% humidity`);
+    }
+
+    const weatherInfo = weatherParts.length > 0 ? weatherParts.join(', ') : 'Conditions not recorded';
+    
+    // Add weather impact analysis if we have temperature data
+    let weatherImpact = '';
+    if (feedback.weatherTemp !== undefined) {
+      if (feedback.weatherTemp > 25) {
+        weatherImpact = ' (Hot conditions - expect 10-30s/km slower, higher RPE normal)';
+      } else if (feedback.weatherTemp < 5) {
+        weatherImpact = ' (Cold conditions - expect faster paces, lower RPE normal)';
+      } else if (feedback.weatherTemp >= 15 && feedback.weatherTemp <= 20) {
+        weatherImpact = ' (Ideal running conditions)';
+      }
+    }
+    
+    return `Weather: ${weatherInfo}${weatherImpact}`;
   }
 
   /**
@@ -355,6 +408,9 @@ export class PerplexityAIService {
   ): string {
     const phase = this.getTrainingPhase(currentWeek);
     const recentTrend = this.analyzeRecentTrend(recentFeedback);
+
+    // 🚀 NEW: Get weather context for this session
+    const weatherContext = this.formatWeatherContext(feedback);
 
     // Determine if this might be expected performance
     const isHighButExpected = (feedback.rpe === 8 || feedback.difficulty === 8) && 
@@ -383,12 +439,13 @@ HALF MARATHON TRAINING ADAPTATION REQUEST${triggerReason}
 Current Session:
 - Week ${currentWeek} (${phase} phase)
 - Session: ${feedback.sessionType} (Expected RPE: ${expectedRPE.min}-${expectedRPE.max})
-- Target: ${feedback.targetDistance}km at ${feedback.targetPace}/km
+- Target: ${feedback.targetDistance}km at ${feedback.targetPace}/km  
 - Completion: ${feedback.completed}
 - RPE: ${feedback.rpe}/10 ${feedback.rpe === 8 ? '(moderate-high)' : feedback.rpe >= 9 ? '(very high)' : isRPEOutOfRange ? '(OUTSIDE EXPECTED RANGE)' : ''}
 - Difficulty: ${feedback.difficulty}/10 ${feedback.difficulty === 8 ? '(moderate-high)' : feedback.difficulty >= 9 ? '(very high)' : ''}
 - Feeling: ${feedback.feeling}
 - Actual Pace: ${feedback.actualPace || 'Not recorded'}${hasPaceDeviation ? ' (SIGNIFICANT DEVIATION)' : ''}
+- ${weatherContext}
 - Comments: ${feedback.comments || 'None'}${contextNote}
 
 Recent Training Trend (last 3 sessions):
@@ -424,26 +481,128 @@ Format as: RECOMMENDATIONS: [list] | INTENSITY: [change] | VOLUME: [change] | RE
     recentSessions: SessionFeedback[],
     currentGoal: string
   ): string {
-    const sessionSummary = recentSessions.map(s => 
-      `${s.sessionType}: ${s.actualPace || s.targetPace}/km, RPE ${s.rpe}, ${s.feeling}`
-    ).join('\n');
+    // Calculate goal pace for context
+    const goalTimeInSeconds = this.timeToSeconds(currentGoal);
+    const goalPacePerKm = Math.floor(goalTimeInSeconds / 21.1);
+    const goalPaceMin = Math.floor(goalPacePerKm / 60);
+    const goalPaceSec = goalPacePerKm % 60;
+    const goalPaceString = `${goalPaceMin}:${goalPaceSec.toString().padStart(2, '0')}`;
+
+    const sessionSummary = recentSessions.map(s => {
+      const actualPace = s.actualPace || s.targetPace;
+      const targetPace = s.targetPace || 'unknown';
+      const sessionContext = this.getSessionContext(s.sessionType, s.targetDistance);
+      const paceAnalysis = this.analyzePaceForSession(actualPace, targetPace, s.sessionType, s.rpe);
+      const weatherContext = this.formatWeatherContext(s);
+      
+      return `• ${sessionContext}: ${actualPace}/km (target: ${targetPace}/km), RPE ${s.rpe}/10, feeling: ${s.feeling}
+  → ${weatherContext}
+  → Analysis: ${paceAnalysis}`;
+    }).join('\n');
 
     return `
-HALF MARATHON TIME PREDICTION
+HALF MARATHON TIME PREDICTION - SESSION TYPE ANALYSIS
 
-Current Goal: ${currentGoal}
-Recent Training Sessions:
+GOAL CONTEXT:
+• Target: ${currentGoal} (requires ${goalPaceString}/km race pace)
+• Course: Manchester Half Marathon (flat, fast)
+• Conditions: October (ideal for racing)
+
+RECENT TRAINING SESSIONS WITH CONTEXT:
 ${sessionSummary}
 
-Based on this training data, what realistic half marathon time should this runner target?
-Consider:
-- Manchester Half Marathon (flat, fast course)
-- October conditions (cool/ideal)
-- Current fitness trend
-- RPE and feeling scores
+SESSION TYPE EXPECTATIONS:
+• EASY runs: Should be 6:15-6:45/km (RPE 3-5), conversational pace
+• TEMPO runs: Should be 5:10-5:20/km (RPE 6-7), comfortably hard, race pace effort
+• LONG runs: Should be 6:00-6:30/km (RPE 4-6), building to moderate effort
+• INTERVAL/SPEED: Should be 4:45-5:05/km (RPE 8-9), very hard efforts
 
-Provide a single predicted time in HH:MM:SS format with brief justification.
+PREDICTION ANALYSIS:
+1. Assess if paces match expected effort for each session type
+2. Strong tempo paces (5:00-5:10/km at RPE 6-7) indicate excellent race fitness
+3. Easy runs at 6:00/km or faster with low RPE show good aerobic base
+4. If achieving race pace (${goalPaceString}/km) in training at moderate RPE, runner is ready for goal
+5. If exceeding race pace in tempo sessions, runner likely capable of faster than goal
+
+WEATHER-ADJUSTED ANALYSIS:
+- Fast paces in hot conditions (>25°C) are more impressive than same pace in cool conditions
+- Slower paces in extreme weather (hot/windy/humid) should not lower fitness assessment
+- Ideal conditions (15-20°C, calm) provide most accurate fitness indicators
+- Adjust expectations based on weather impact when predicting race performance
+
+Provide predicted half marathon time in HH:MM:SS format based on session-specific pace analysis with weather considerations.
 `;
+  }
+
+  private timeToSeconds(timeString: string): number {
+    if (!timeString || timeString === '') return 999999;
+    
+    const parts = timeString.split(':');
+    if (parts.length === 2) {
+      const minutes = parseInt(parts[0] || '0', 10) || 0;
+      const seconds = parseInt(parts[1] || '0', 10) || 0;
+      return minutes * 60 + seconds;
+    } else if (parts.length === 3) {
+      const hours = parseInt(parts[0] || '0', 10) || 0;
+      const minutes = parseInt(parts[1] || '0', 10) || 0;
+      const seconds = parseInt(parts[2] || '0', 10) || 0;
+      return hours * 3600 + minutes * 60 + seconds;
+    }
+    return 999999;
+  }
+
+  private getSessionContext(sessionType: string, distance?: number): string {
+    const distanceStr = distance ? `${distance}km ` : '';
+    
+    switch (sessionType.toLowerCase()) {
+      case 'tempo':
+        return `${distanceStr}TEMPO session (threshold pace)`;
+      case 'easy':
+        return `${distanceStr}EASY run (aerobic base)`;
+      case 'long':
+        return `${distanceStr}LONG run (endurance)`;
+      case 'intervals':
+        return `${distanceStr}INTERVAL session (speed work)`;
+      default:
+        return `${distanceStr}${sessionType.toUpperCase()} session`;
+    }
+  }
+
+  private analyzePaceForSession(actualPace: string, targetPace: string, sessionType: string, rpe: number): string {
+    if (!actualPace || actualPace === '') return 'No pace data available';
+    
+    const sessionLower = sessionType.toLowerCase();
+    
+    // Convert paces to seconds for comparison
+    const actualSeconds = this.timeToSeconds(actualPace);
+    const targetSeconds = this.timeToSeconds(targetPace);
+    
+    // Session-specific analysis
+    if (sessionLower === 'tempo') {
+      if (actualSeconds < 310) { // Faster than 5:10/km
+        return `EXCELLENT tempo pace (faster than 5:10/km) at RPE ${rpe} - indicates strong race fitness`;
+      } else if (actualSeconds < 330) { // 5:10-5:30/km
+        return `Good tempo pace (5:10-5:30/km) at RPE ${rpe} - solid threshold fitness`;
+      } else {
+        return `Moderate tempo pace (slower than 5:30/km) at RPE ${rpe}`;
+      }
+    } else if (sessionLower === 'easy') {
+      if (actualSeconds < 360) { // Faster than 6:00/km
+        return `Fast easy pace (${actualPace}/km) at RPE ${rpe} - ${rpe <= 4 ? 'excellent aerobic efficiency' : 'may be too fast for easy run'}`;
+      } else if (actualSeconds < 405) { // 6:00-6:45/km
+        return `Appropriate easy pace (${actualPace}/km) at RPE ${rpe} - good aerobic base`;
+      } else {
+        return `Conservative easy pace (${actualPace}/km) at RPE ${rpe}`;
+      }
+    } else if (sessionLower === 'long') {
+      if (actualSeconds < 360) { // Faster than 6:00/km
+        return `Strong long run pace (${actualPace}/km) at RPE ${rpe} - excellent endurance`;
+      } else {
+        return `Steady long run pace (${actualPace}/km) at RPE ${rpe}`;
+      }
+    }
+    
+    return `${actualPace}/km at RPE ${rpe} for ${sessionType} session`;
   }
 
   /**
