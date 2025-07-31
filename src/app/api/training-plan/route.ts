@@ -6,6 +6,37 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+// Convert database RPE number to UI RPE object format
+function convertNumberToRPETarget(rpe: number, sessionType?: string | null): any {
+  // Use the number as both min and max for exact target, with appropriate description
+  const descriptions: Record<string, string> = {
+    'easy': 'Conversational pace',
+    'tempo': 'Comfortably hard',
+    'intervals': 'Near maximum effort',
+    'long': 'Progressively harder',
+    'race': 'Race effort'
+  };
+  
+  const contexts: Record<string, string> = {
+    'easy': 'You should be able to chat comfortably during this run',
+    'tempo': 'Sustainable effort - challenging but controlled',
+    'intervals': 'High intensity - should feel very challenging',
+    'long': 'Start easy, build to moderate effort by the end',
+    'race': 'Give everything you have!'
+  };
+  
+  // For single RPE values, create a small range around the target
+  const min = Math.max(1, rpe - 1);
+  const max = Math.min(10, rpe + 1);
+  
+  return {
+    min,
+    max,
+    description: descriptions[sessionType || 'easy'] || 'Target effort level', 
+    context: contexts[sessionType || 'easy'] || 'Maintain this effort throughout the session'
+  };
+}
+
 export async function GET(request: NextRequest) {
   console.log('🚀 API /training-plan GET called'); // Test if API is being called
   try {
@@ -94,7 +125,7 @@ export async function GET(request: NextRequest) {
       warmup: session.warmup,
       mainSet: session.mainSet,
       cooldown: session.cooldown,
-      targetRPE: session.targetRPE,
+      targetRPE: session.targetRPE ? convertNumberToRPETarget(Number(session.targetRPE), session.sessionSubType) : undefined,
       aiModified: session.aiModified,
       originalPace: session.originalData ? (session.originalData as any).pace : undefined,
       originalDistance: session.originalData ? (session.originalData as any).distance : undefined,
