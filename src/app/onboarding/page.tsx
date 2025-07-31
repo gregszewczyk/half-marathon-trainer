@@ -13,11 +13,16 @@ import {
   TrophyIcon,
   ClockIcon,
   UserGroupIcon,
-  CpuChipIcon
+  CpuChipIcon,
+  DocumentArrowUpIcon,
+  SparklesIcon
 } from '@heroicons/react/24/outline'
 
 // Clean TypeScript interfaces
 interface OnboardingFormData {
+  // Plan Type
+  planType: 'AI_GENERATED' | 'CUSTOM_IMPORT' // 🚀 NEW: Let users choose plan type
+  
   // Race Goals
   raceType: 'FIVE_K' | 'TEN_K' | 'HALF_MARATHON' | 'FULL_MARATHON' | 'CUSTOM'
   customDistance: string
@@ -25,6 +30,7 @@ interface OnboardingFormData {
   raceDate: string
   
   // Experience & PBs
+  fitnessLevel: 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED' | 'ELITE' // 🚀 NEW
   pb5k: string
   pb10k: string
   pbHalfMarathon: string
@@ -87,10 +93,12 @@ interface OnboardingFormData {
 }
 
 const INITIAL_FORM_DATA: OnboardingFormData = {
+  planType: 'AI_GENERATED', // 🚀 NEW: Default to AI-generated plan
   raceType: 'HALF_MARATHON',
   customDistance: '',
   targetTime: 'FINISH',
   raceDate: '',
+  fitnessLevel: 'INTERMEDIATE', // 🚀 NEW: Default, will be overridden by smart inference
   pb5k: '',
   pb10k: '',
   pbHalfMarathon: '',
@@ -244,7 +252,7 @@ export default function OnboardingPage() {
   }
 
   const nextStep = () => {
-    if (currentStep < 6) {
+    if (currentStep < 7) {
       setCurrentStep(prev => prev + 1)
     }
   }
@@ -321,7 +329,110 @@ export default function OnboardingPage() {
     return !presetTimes.includes(formData.targetTime)
   }
 
-  // Step 1: Race Goals with Enhanced Target Time Selection
+  // 🚀 NEW: Step 1: Plan Type Selection
+  const renderPlanTypeStep = () => (
+    <div className="space-y-6">
+      <div className="text-center">
+        <div className="flex justify-center mb-4">
+          <div className="flex items-center space-x-2">
+            <SparklesIcon className="h-8 w-8 text-primary-400" />
+            <DocumentArrowUpIcon className="h-8 w-8 text-primary-400" />
+          </div>
+        </div>
+        <h2 className="text-2xl font-bold mb-2">Choose Your Training Approach</h2>
+        <p className="text-gray-400">How would you like to create your training plan?</p>
+      </div>
+
+      <div className="grid gap-4">
+        {/* AI Generated Plan */}
+        <Card 
+          className={`p-6 cursor-pointer transition-all ${
+            formData.planType === 'AI_GENERATED' 
+              ? 'ring-2 ring-primary-400 bg-primary-400/10' 
+              : 'hover:bg-gray-800/50'
+          }`}
+          onClick={() => updateFormData({ planType: 'AI_GENERATED' })}
+        >
+          <div className="flex items-start space-x-4">
+            <div className="flex-shrink-0">
+              <SparklesIcon className="h-8 w-8 text-primary-400" />
+            </div>
+            <div className="flex-1">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h3 className="font-semibold text-lg mb-2">🤖 AI-Generated Plan</h3>
+                  <p className="text-gray-400 mb-3">
+                    Let our AI create a personalized training plan based on your goals, experience, and preferences.
+                  </p>
+                  <div className="text-sm text-primary-300">
+                    <div className="mb-1">✨ Automatically adapts to your feedback</div>
+                    <div className="mb-1">📊 Integrates with your other activities</div>
+                    <div className="mb-1">🎯 Optimized for your target time</div>
+                    <div>🌤️ Weather-aware training adjustments</div>
+                  </div>
+                </div>
+                {formData.planType === 'AI_GENERATED' && (
+                  <Badge className="bg-primary-400 text-primary-900">Selected</Badge>
+                )}
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        {/* Custom Import Plan */}
+        <Card 
+          className={`p-6 cursor-pointer transition-all ${
+            formData.planType === 'CUSTOM_IMPORT' 
+              ? 'ring-2 ring-primary-400 bg-primary-400/10' 
+              : 'hover:bg-gray-800/50'
+          }`}
+          onClick={() => updateFormData({ planType: 'CUSTOM_IMPORT' })}
+        >
+          <div className="flex items-start space-x-4">
+            <div className="flex-shrink-0">
+              <DocumentArrowUpIcon className="h-8 w-8 text-primary-400" />
+            </div>
+            <div className="flex-1">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h3 className="font-semibold text-lg mb-2">📋 Import Your Own Plan</h3>
+                  <p className="text-gray-400 mb-3">
+                    Already have a training plan? Import it and still benefit from AI feedback and analysis.
+                  </p>
+                  <div className="text-sm text-primary-300">
+                    <div className="mb-1">📈 AI feedback on your sessions</div>
+                    <div className="mb-1">🔍 Performance analysis & insights</div>
+                    <div className="mb-1">⚡ Smart modification suggestions</div>
+                    <div>📱 All tracking & social features</div>
+                  </div>
+                </div>
+                {formData.planType === 'CUSTOM_IMPORT' && (
+                  <Badge className="bg-primary-400 text-primary-900">Selected</Badge>
+                )}
+              </div>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {formData.planType === 'CUSTOM_IMPORT' && (
+        <Card className="p-4 bg-amber-900/20 border-amber-700">
+          <div className="flex items-start space-x-3">
+            <div className="text-amber-400 text-lg">💡</div>
+            <div>
+              <h4 className="font-medium text-amber-200 mb-1">Coming up next:</h4>
+              <p className="text-sm text-amber-300">
+                After setting your race goals, you'll be able to upload your training plan as a CSV file or enter sessions manually.
+                Our AI will still provide feedback and suggestions while respecting your existing structure.
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
+    </div>
+  )
+
+  // Step 2: Race Goals with Enhanced Target Time Selection (formerly Step 1)
   const renderStep1 = () => (
     <div className="space-y-6">
       <div className="text-center">
@@ -513,6 +624,36 @@ export default function OnboardingPage() {
         <ClockIcon className="h-12 w-12 text-primary-400 mx-auto mb-4" />
         <h2 className="text-2xl font-bold mb-2">Your Running Experience</h2>
         <p className="text-gray-400">Recent race times help us create a much smarter training plan than generic fitness levels</p>
+      </div>
+
+      {/* 🚀 NEW: Fitness Level Question */}
+      <div className="bg-gray-800/50 p-6 rounded-lg border border-gray-700">
+        <h3 className="text-lg font-semibold mb-4">Current Running Experience</h3>
+        <div className="grid md:grid-cols-2 gap-3">
+          {[
+            { value: 'BEGINNER', label: 'Beginner', desc: 'New to running or just starting' },
+            { value: 'INTERMEDIATE', label: 'Intermediate', desc: 'Regular runner, some race experience' },
+            { value: 'ADVANCED', label: 'Advanced', desc: 'Experienced racer, consistent training' },
+            { value: 'ELITE', label: 'Elite', desc: 'Competitive runner, high performance' }
+          ].map((level) => (
+            <button
+              key={level.value}
+              type="button"
+              onClick={() => updateFormData({ fitnessLevel: level.value as any })}
+              className={`p-4 rounded-lg border-2 text-left transition-all ${
+                formData.fitnessLevel === level.value
+                  ? 'border-primary-400 bg-primary-400/10'
+                  : 'border-gray-600 hover:border-gray-500'
+              }`}
+            >
+              <div className="font-medium">{level.label}</div>
+              <div className="text-sm text-gray-400 mt-1">{level.desc}</div>
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-gray-500 mt-3">
+          💡 Don't worry if you're unsure - we'll automatically adjust based on your race times below
+        </p>
       </div>
 
       <div className="grid md:grid-cols-2 gap-4">
@@ -1308,13 +1449,14 @@ export default function OnboardingPage() {
 
   const renderCurrentStep = () => {
     switch (currentStep) {
-      case 1: return renderStep1()
-      case 2: return renderStep2()
-      case 3: return renderStep3()
-      case 4: return renderStep4()
-      case 5: return renderStep5()
-      case 6: return renderStep6()
-      default: return renderStep1()
+      case 1: return renderPlanTypeStep() // 🚀 NEW: Plan type selection
+      case 2: return renderStep1() // Goal setting (shifted from step 1)
+      case 3: return renderStep2() // PBs & Experience (shifted from step 2)
+      case 4: return renderStep3() // Training preferences (shifted from step 3)
+      case 5: return renderStep4() // Other activities (shifted from step 4)
+      case 6: return renderStep5() // Running club (shifted from step 5)
+      case 7: return renderStep6() // Final review (shifted from step 6) 
+      default: return renderPlanTypeStep()
     }
   }
 
@@ -1336,12 +1478,12 @@ export default function OnboardingPage() {
         <div className="mb-8">
           <div className="flex justify-between items-center mb-4">
             <h1 className="text-2xl font-bold">Setup Your Training Plan</h1>
-            <span className="text-sm text-gray-400">Step {currentStep} of 6</span>
+            <span className="text-sm text-gray-400">Step {currentStep} of 7</span>
           </div>
           <div className="w-full bg-gray-800 rounded-full h-2">
             <div 
               className="bg-primary-400 h-2 rounded-full transition-all duration-300"
-              style={{ width: `${(currentStep / 6) * 100}%` }}
+              style={{ width: `${(currentStep / 7) * 100}%` }}
             ></div>
           </div>
         </div>
@@ -1364,7 +1506,7 @@ export default function OnboardingPage() {
             <span>Previous</span>
           </Button>
 
-          {currentStep < 6 ? (
+          {currentStep < 7 ? (
             <Button
               onClick={nextStep}
               className="flex items-center space-x-2"

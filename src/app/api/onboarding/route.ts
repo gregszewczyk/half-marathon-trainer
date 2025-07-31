@@ -3,6 +3,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
+import { inferFitnessLevel } from '@/lib/fitness-level-inference'
 
 const prisma = new PrismaClient()
 
@@ -13,6 +14,7 @@ export async function POST(request: NextRequest) {
 
     const {
       userId,
+      planType, // 🚀 NEW: Plan type selection
       raceType,
       customDistance,
       targetTime,
@@ -37,7 +39,8 @@ export async function POST(request: NextRequest) {
       location,
       injuryHistory,
       restDayPrefs,
-      maxWeeklyMiles
+      maxWeeklyMiles,
+      fitnessLevel // 🚀 NEW: User-selected fitness level
     } = data
 
     // Validate required fields
@@ -72,6 +75,27 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // 🚀 NEW: Smart fitness level detection
+    const personalBests = {
+      pb5k,
+      pb10k,
+      pbHalfMarathon,
+      pbMarathon,
+      pbCustom,
+      pbCustomDistance
+    }
+
+    const smartFitnessLevel = inferFitnessLevel(
+      fitnessLevel || 'INTERMEDIATE', // Default to INTERMEDIATE if not provided
+      personalBests
+    )
+
+    console.log('🎯 Smart fitness level detection:', {
+      userSelection: fitnessLevel || 'INTERMEDIATE',
+      finalLevel: smartFitnessLevel,
+      providedPBs: Object.entries(personalBests).filter(([, value]) => value).map(([key]) => key)
+    })
+
     // Create or update user profile
     const userProfile = await prisma.userProfile.upsert({
       where: { userId },
@@ -81,6 +105,7 @@ export async function POST(request: NextRequest) {
         targetTime,
         raceDate: parsedRaceDate,
         trainingDaysPerWeek: trainingDaysPerWeek || 4,
+        fitnessLevel: smartFitnessLevel, // 🚀 NEW: Use smart inference
         
         // Personal Bests
         pb5k: pb5k || null,
@@ -124,6 +149,7 @@ export async function POST(request: NextRequest) {
         targetTime,
         raceDate: parsedRaceDate,
         trainingDaysPerWeek: trainingDaysPerWeek || 4,
+        fitnessLevel: smartFitnessLevel, // 🚀 NEW: Use smart inference
         
         // Personal Bests
         pb5k: pb5k || null,
@@ -167,13 +193,16 @@ export async function POST(request: NextRequest) {
       userId, 
       raceType, 
       targetTime,
+      planType,
+      fitnessLevel: userProfile.fitnessLevel,
       onboardingComplete: userProfile.onboardingComplete 
     })
 
-    // ✅ Trigger plan generation after saving profile
-    console.log('🚀 Triggering plan generation for user:', userId)
-    
-    try {
+    // 🚀 NEW: Conditional plan generation based on plan type
+    if (planType === 'AI_GENERATED') {
+      console.log('🚀 Triggering AI plan generation for user:', userId)
+      
+      try {
       // Get proper base URL with TypeScript-safe environment variable handling
       const environmentUrl = process.env['VERCEL_URL']
       let baseUrl: string
@@ -256,6 +285,24 @@ export async function POST(request: NextRequest) {
         },
         message: 'Profile saved successfully. Plan generation will start shortly.',
         planGenerationStarted: false
+      })
+    }
+    } else {
+      // 🚀 NEW: Custom plan import flow - skip AI generation
+      console.log('📋 Custom plan import selected - skipping AI generation')
+      
+      return NextResponse.json({
+        success: true,
+        profile: {
+          id: userProfile.id,
+          raceType: userProfile.raceType,
+          targetTime: userProfile.targetTime,
+          raceDate: userProfile.raceDate,
+          onboardingComplete: userProfile.onboardingComplete
+        },
+        message: 'Profile saved successfully. You can now import your custom training plan.',
+        planGenerationStarted: false,
+        customImport: true // Flag to indicate custom import flow
       })
     }
 
