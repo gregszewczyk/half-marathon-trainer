@@ -485,6 +485,68 @@ export async function POST(request: NextRequest) {
     // 🚀 NEW: Check if week is completed after feedback submission
     await checkWeekCompletion(userId, weekNumber ? parseInt(weekNumber) : 1);
 
+    // 🚀 NEW: Trigger AI adaptation analysis for session feedback
+    let adaptation = null;
+    if (completed === 'yes' || completed === 'partial') {
+      try {
+        console.log('🤖 Checking if AI adaptation is needed for session feedback...');
+        
+        // Create SessionFeedback object for AI analysis
+        const sessionFeedbackForAI = {
+          sessionId: sessionId,
+          completed: completed as 'yes' | 'no' | 'partial',
+          actualPace: actualPace || plannedPace || '5:30',
+          difficulty: difficulty ? parseInt(difficulty) : 5,
+          rpe: rpe ? parseInt(rpe) : 5,
+          feeling: feeling as 'terrible' | 'bad' | 'ok' | 'good' | 'great',
+          comments: comments || '',
+          weekNumber: weekNumber ? parseInt(weekNumber) : 1,
+          sessionType: sessionSubType || 'easy',
+          targetPace: plannedPace || '5:30',
+          targetDistance: plannedDistance ? parseFloat(plannedDistance) : 5
+        };
+
+        const shouldTrigger = aiService.shouldTriggerAI(sessionFeedbackForAI);
+        console.log(`🤖 AI trigger decision: ${shouldTrigger}`);
+
+        if (shouldTrigger) {
+          console.log('🤖 Generating AI adaptation...');
+          
+          // Get recent feedback for context
+          const recentFeedback = await prisma.sessionFeedback.findMany({
+            where: { userId },
+            orderBy: { submittedAt: 'desc' },
+            take: 3
+          });
+
+          const recentSessionsForAI = recentFeedback.map(f => ({
+            sessionId: f.sessionId,
+            completed: f.completed as 'yes' | 'no' | 'partial',
+            actualPace: f.actualPace || f.plannedPace || '5:30',
+            difficulty: f.difficulty,
+            rpe: f.rpe,
+            feeling: f.feeling as 'terrible' | 'bad' | 'ok' | 'good' | 'great',
+            comments: f.comments || '',
+            weekNumber: f.week,
+            sessionType: f.sessionSubType || 'easy',
+            targetPace: f.plannedPace || '5:30', 
+            targetDistance: f.plannedDistance || 5
+          }));
+
+          adaptation = await aiService.generateAdaptations(
+            sessionFeedbackForAI,
+            recentSessionsForAI,
+            weekNumber ? parseInt(weekNumber) : 1
+          );
+          
+          console.log('✅ AI adaptation generated:', adaptation.recommendations.length, 'recommendations');
+        }
+      } catch (error) {
+        console.error('❌ Error generating AI adaptation:', error);
+        // Don't fail the entire request if AI fails
+      }
+    }
+
     // 🚀 NEW: Trigger race time prediction update after significant sessions
     let updatedPrediction = null;
     if (sessionSubType && ['tempo', 'intervals', 'long'].includes(sessionSubType.toLowerCase()) && completed === 'yes') {
@@ -494,6 +556,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message: 'Feedback saved successfully',
+      adaptation: adaptation,
       updatedPrediction: updatedPrediction
     });
 

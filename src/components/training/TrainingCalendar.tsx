@@ -547,6 +547,11 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
       setShowFeedback(false);
       setSelectedSession(null);
 
+      // 🚀 NEW: Refresh calendar data to show completed session without manual reload
+      console.log('🔄 Refreshing calendar data after feedback submission...');
+      _sessionCache.delete(`sessions-${userId}`); // Clear cache to force reload
+      // The useEffect will automatically reload when cache is cleared
+
     } catch (error) {
       console.error('❌ Error submitting feedback:', error);
       // Could add error toast here
