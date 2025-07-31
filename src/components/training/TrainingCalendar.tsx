@@ -2401,7 +2401,7 @@ Keep it concise and motivational - this should make them feel good about their t
       {/* 🚀 NEW: AI Recommendations Modal */}
       {showAiPanel && aiAdjustment && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-800 rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-gray-600">
+          <div className="bg-gray-800 rounded-xl shadow-2xl max-w-4xl w-full max-h-[95vh] overflow-y-auto border border-gray-600">
             <div className="p-6 border-b border-gray-700">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -2410,7 +2410,7 @@ Keep it concise and motivational - this should make them feel good about their t
                   </div>
                   <div>
                     <h3 className="text-xl font-bold text-white">AI Coach Analysis</h3>
-                    <p className="text-gray-400 text-sm">{aiAdjustment.userMessage}</p>
+                    <p className="text-gray-400 text-sm whitespace-pre-wrap break-words">{aiAdjustment.userMessage}</p>
                   </div>
                 </div>
                 <button 
@@ -2422,7 +2422,7 @@ Keep it concise and motivational - this should make them feel good about their t
               </div>
             </div>
 
-            <div className="p-6 space-y-6">
+            <div className="p-6 space-y-8">
               {/* AI Recommendations */}
               {aiAdjustment.recommendations && aiAdjustment.recommendations.length > 0 && (
                 <div>
@@ -2433,7 +2433,7 @@ Keep it concise and motivational - this should make them feel good about their t
                   <div className="space-y-3">
                     {aiAdjustment.recommendations.map((rec: string, index: number) => (
                       <div key={index} className="bg-gray-700/50 rounded-lg p-4 border border-gray-600">
-                        <p className="text-gray-200 leading-relaxed">{rec}</p>
+                        <p className="text-gray-200 leading-relaxed whitespace-pre-wrap break-words">{rec}</p>
                       </div>
                     ))}
                   </div>
@@ -2449,9 +2449,9 @@ Keep it concise and motivational - this should make them feel good about their t
                   </h4>
                   <div className="bg-gray-700/50 rounded-lg p-4 border border-gray-600">
                     {Object.entries(aiAdjustment.adaptations).map(([key, value]) => (
-                      <div key={key} className="flex justify-between items-center py-2">
-                        <span className="text-gray-300 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}:</span>
-                        <span className="text-cyan-400 font-medium">{String(value)}</span>
+                      <div key={key} className="py-2 border-b border-gray-600 last:border-b-0">
+                        <div className="text-gray-300 capitalize font-medium mb-1">{key.replace(/([A-Z])/g, ' $1').trim()}:</div>
+                        <div className="text-cyan-400 whitespace-pre-wrap break-words">{String(value)}</div>
                       </div>
                     ))}
                   </div>
