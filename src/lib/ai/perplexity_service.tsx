@@ -37,7 +37,7 @@ export class PerplexityAIService {
   private baseUrl = 'https://api.perplexity.ai/chat/completions';
 
   constructor() {
-    this.apiKey = process.env.NEXT_PUBLIC_PERPLEXITY_API_KEY || '';
+    this.apiKey = process.env.PERPLEXITY_API_KEY || process.env.NEXT_PUBLIC_PERPLEXITY_API_KEY || '';
     if (!this.apiKey) {
       console.warn('Perplexity API key not found. AI features will be disabled.');
     }
