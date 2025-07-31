@@ -1313,9 +1313,9 @@ Keep it concise and motivational - this should make them feel good about their t
           </div>
           <div className="flex items-center gap-2">
             <Activity className="w-4 h-4 text-green-400" />
-            <span className="text-sm text-gray-400">Progress:</span>
+            <span className="text-sm text-gray-400">Week Total:</span>
             <span className="font-medium text-white">
-              {Object.values(weekData).flat().filter(s => s.type === 'running' && s.completed).length}/{Object.values(weekData).flat().filter(s => s.type === 'running').length}
+              {Object.values(weekData).flat().filter(s => s.type === 'running').reduce((total, s) => total + (s.distance || 0), 0)}km
             </span>
           </div>
           <div className="flex items-center gap-2">

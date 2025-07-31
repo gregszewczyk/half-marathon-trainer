@@ -3,6 +3,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
+import { ProgressionSafetyValidator, UserTrainingProfile } from '@/lib/training/progressionSafety';
 
 const prisma = new PrismaClient();
 
@@ -80,6 +81,7 @@ interface OnboardingData {
   age?: number;
   gender?: string;
   weight?: number;
+  fitnessLevel?: 'beginner' | 'intermediate' | 'advanced';
 }
 
 export async function POST(request: NextRequest) {
@@ -195,8 +197,12 @@ async function generateAITrainingPlan(userId: string, data: OnboardingData, tota
     console.log(`🏃 AI pace zones: ${paceZones.easy} - ${paceZones.tempo} - ${paceZones.interval}`);
     
     // Step 3: Create AI-optimized weekly progression
-    const weeklyProgression = await generateAIProgression(data, aiAnalysis, totalWeeks);
-    console.log(`📈 AI progression: ${weeklyProgression.totalWeeks} weeks`);
+    const rawProgression = await generateAIProgression(data, aiAnalysis, totalWeeks);
+    console.log(`📈 AI progression: ${rawProgression.totalWeeks} weeks`);
+    
+    // Step 3.5: Apply research-based safety boundaries
+    const weeklyProgression = await applySafetyBoundariesToProgression(rawProgression, data);
+    console.log(`🛡️ Safety-validated progression: ${weeklyProgression.safetyValidation?.adjustmentsMade || 0} adjustments made`);
     
     // Step 4: Generate sessions with AI reasoning
     const sessions: GeneratedSessionCreate[] = [];
@@ -410,11 +416,14 @@ PROFILE:
 Create a progressive ${totalWeeks}-week plan with weekly mileage and session types.
 Consider: base building → build phase → peak phase → taper
 
-CRITICAL BEGINNER REQUIREMENTS:
-- If fitness level is "beginner": Start Week 1 with 1-2 mile easy runs, use run/walk intervals
-- Beginners targeting 5K: Week 1-2 should be 8-10 total miles with run/walk, Week 3-4: 12-15 miles continuous short runs, Week 5-8: build to 5K distance
-- Never exceed 10% weekly mileage increase for beginners
+CRITICAL SAFETY REQUIREMENTS:
+- BEGINNERS: Start Week 1 with 1-2 mile easy runs, max 10 miles/16km total, use run/walk intervals
+- INTERMEDIATE: Start Week 1 with max 20 miles/32km total
+- ADVANCED: Start Week 1 with max 30 miles/48km total
+- PROGRESSION LIMITS: Never exceed 10% weekly increase for beginners, 15% intermediate, 20% advanced
+- VOLUME CAPS: Half Marathon training should not exceed 25km/week (beginners), 38km/week (intermediate), 53km/week (advanced)
 - Focus on time on feet rather than pace for beginners
+- Include cutback weeks every 3-4 weeks with 20-25% volume reduction
 
 Respond with JSON only:
 {
@@ -504,6 +513,120 @@ Respond with JSON only:
       }))
     };
   }
+}
+
+// Apply research-based safety boundaries to AI-generated progression
+async function applySafetyBoundariesToProgression(
+  aiProgression: any, 
+  data: OnboardingData
+): Promise<any> {
+  if (!aiProgression?.weeks) return aiProgression;
+
+  console.log('🛡️ Applying safety boundaries to AI progression');
+  
+  const userProfile: UserTrainingProfile = {
+    fitnessLevel: (data.fitnessLevel as 'beginner' | 'intermediate' | 'advanced') || 'beginner',
+    raceType: (data.raceType as 'Half Marathon') || 'Half Marathon',
+    trainingDaysPerWeek: data.trainingDaysPerWeek || 5,
+    currentWeeklyDistance: 0, // Will be set dynamically
+    weeksInCurrentVolume: 1,
+    ...(data.injuryHistory && data.injuryHistory.length > 0 && { injuryHistory: data.injuryHistory })
+  };
+
+  const validatedWeeks = [];
+  let adjustmentsMade = 0;
+
+  for (let i = 0; i < aiProgression.weeks.length; i++) {
+    const week = aiProgression.weeks[i];
+    const previousWeek = i === 0 ? null : validatedWeeks[i - 1];
+    
+    // Calculate current week's total distance in km
+    const proposedDistance = (week.easyMiles || 0) + (week.tempoMiles || 0) + 
+                           (week.intervalMiles || 0) + (week.longMiles || 0);
+    const proposedDistanceKm = proposedDistance * 1.60934; // Convert miles to km
+    
+    if (previousWeek) {
+      const previousDistance = (previousWeek.easyMiles || 0) + (previousWeek.tempoMiles || 0) + 
+                              (previousWeek.intervalMiles || 0) + (previousWeek.longMiles || 0);
+      const previousDistanceKm = previousDistance * 1.60934;
+      
+      // Update current volume for user profile
+      userProfile.currentWeeklyDistance = previousDistanceKm;
+      
+      // Get recent week distances for ACWR (simplified - using last 4 weeks)
+      const recentDistances = validatedWeeks.slice(Math.max(0, i - 4), i).map(w => 
+        ((w.easyMiles || 0) + (w.tempoMiles || 0) + (w.intervalMiles || 0) + (w.longMiles || 0)) * 1.60934
+      );
+      
+      // Validate weekly increase
+      const validation = ProgressionSafetyValidator.validateWeeklyIncrease(
+        previousDistanceKm,
+        proposedDistanceKm,
+        userProfile,
+        recentDistances
+      );
+      
+      if (!validation.isValid) {
+        console.log(`⚠️ Week ${week.week}: AI suggested ${proposedDistanceKm.toFixed(1)}km, adjusted to ${validation.adjustedDistance}km - ${validation.reasoning}`);
+        
+        // Apply the adjustment proportionally across session types
+        const adjustmentRatio = validation.adjustedDistance / proposedDistanceKm;
+        const adjustedWeek = {
+          ...week,
+          easyMiles: Math.round((week.easyMiles || 0) * adjustmentRatio),
+          tempoMiles: Math.round((week.tempoMiles || 0) * adjustmentRatio), 
+          intervalMiles: Math.round((week.intervalMiles || 0) * adjustmentRatio),
+          longMiles: Math.round((week.longMiles || 0) * adjustmentRatio),
+          safetyAdjusted: true,
+          safetyReason: validation.reasoning,
+          originalDistance: proposedDistanceKm,
+          adjustedDistance: validation.adjustedDistance
+        };
+        
+        validatedWeeks.push(adjustedWeek);
+        adjustmentsMade++;
+      } else {
+        validatedWeeks.push({
+          ...week, 
+          safetyValidated: true,
+          warningLevel: validation.warningLevel
+        });
+      }
+    } else {
+      // First week - validate against beginner starting recommendations
+      const maxFirstWeek = userProfile.fitnessLevel === 'beginner' ? 16 : // 10 miles = 16km
+                          userProfile.fitnessLevel === 'intermediate' ? 32 : 48; // 20-30 miles
+      
+      if (proposedDistanceKm > maxFirstWeek) {
+        console.log(`⚠️ Week 1: AI suggested ${proposedDistanceKm.toFixed(1)}km, adjusted to ${maxFirstWeek}km for ${userProfile.fitnessLevel} runner`);
+        const adjustmentRatio = maxFirstWeek / proposedDistanceKm;
+        validatedWeeks.push({
+          ...week,
+          easyMiles: Math.round((week.easyMiles || 0) * adjustmentRatio),
+          tempoMiles: Math.round((week.tempoMiles || 0) * adjustmentRatio),
+          intervalMiles: Math.round((week.intervalMiles || 0) * adjustmentRatio),
+          longMiles: Math.round((week.longMiles || 0) * adjustmentRatio),
+          safetyAdjusted: true,
+          safetyReason: `Starting volume reduced for ${userProfile.fitnessLevel} runner safety`
+        });
+        adjustmentsMade++;
+      } else {
+        validatedWeeks.push({...week, safetyValidated: true});
+      }
+    }
+  }
+
+  console.log(`🛡️ Safety validation complete: ${adjustmentsMade} weeks adjusted out of ${aiProgression.weeks.length}`);
+  
+  return {
+    ...aiProgression,
+    weeks: validatedWeeks,
+    safetyValidation: {
+      adjustmentsMade,
+      totalWeeks: aiProgression.weeks.length,
+      appliedAt: new Date().toISOString()
+    }
+  };
 }
 
 async function generateAIWeekSessions(

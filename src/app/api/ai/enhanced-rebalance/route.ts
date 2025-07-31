@@ -1,5 +1,6 @@
 // src/app/api/ai/enhanced-rebalance/route.ts
 import { NextRequest, NextResponse } from 'next/server';
+import { ProgressionSafetyValidator, UserTrainingProfile } from '@/lib/training/progressionSafety';
 
 interface EnhancedRebalanceRequest {
   sessionId: string;
@@ -108,6 +109,12 @@ CRITICAL ANALYSIS NEEDED:
 2. Should Week ${currentWeek + 1} training be modified as a result?
 3. Are there signs this athlete needs phase adjustments (extend base, accelerate build)?
 4. Should any MadeRunning sessions be skipped/modified for optimal progression?
+
+SAFETY BOUNDARIES - NEVER EXCEED:
+- Weekly distance increases >10% (beginners), >15% (intermediate), >20% (advanced)
+- Half Marathon training volume caps: 25km/week (beginners), 38km/week (intermediate), 53km/week (advanced)
+- Require cutback weeks every 3-4 weeks with 20-25% volume reduction
+- Monitor ACWR (Acute-Chronic Workload Ratio) - danger zone is >1.5
 
 PROVIDE 2-3 TRAINING OPTIONS for next week with specific modifications.
 Consider session type changes (tempo→fartlek, intervals→progression runs) not just pace adjustments.
