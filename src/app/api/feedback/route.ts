@@ -540,6 +540,58 @@ export async function POST(request: NextRequest) {
           );
           
           console.log('✅ AI adaptation generated:', adaptation.recommendations.length, 'recommendations');
+          
+          // 🚀 NEW: Store AI feedback for user review
+          try {
+            await prisma.aIFeedback.create({
+              data: {
+                userId: userId,
+                sessionId: sessionId,
+                weekNumber: weekNumber ? parseInt(weekNumber) : 1,
+                recommendations: adaptation.recommendations || [],
+                adaptations: adaptation.adaptations || {},
+                reasoning: adaptation.reasoning || '',
+                severity: adaptation.severity || 'medium',
+                source: adaptation.source || 'ai',
+                userMessage: adaptation.userMessage || '',
+                // Session context for display
+                sessionType: sessionSubType || 'easy',
+                actualPace: actualPace || null,
+                targetPace: plannedPace || null,
+                rpe: rpe ? parseInt(rpe) : null,
+                difficulty: difficulty ? parseInt(difficulty) : null
+              }
+            });
+            console.log('💾 AI feedback stored for future review');
+          } catch (feedbackError) {
+            // Handle unique constraint error (feedback already exists)
+            if ((feedbackError as any).code === 'P2002') {
+              console.log('📝 Updating existing AI feedback...');
+              await prisma.aIFeedback.update({
+                where: {
+                  userId_sessionId: {
+                    userId: userId,
+                    sessionId: sessionId
+                  }
+                },
+                data: {
+                  recommendations: adaptation.recommendations || [],
+                  adaptations: adaptation.adaptations || {},
+                  reasoning: adaptation.reasoning || '',
+                  severity: adaptation.severity || 'medium',
+                  source: adaptation.source || 'ai',
+                  userMessage: adaptation.userMessage || '',
+                  sessionType: sessionSubType || 'easy',
+                  actualPace: actualPace || null,
+                  targetPace: plannedPace || null,
+                  rpe: rpe ? parseInt(rpe) : null,
+                  difficulty: difficulty ? parseInt(difficulty) : null
+                }
+              });
+            } else {
+              console.error('❌ Error storing AI feedback:', feedbackError);
+            }
+          }
         }
       } catch (error) {
         console.error('❌ Error generating AI adaptation:', error);

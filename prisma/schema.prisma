@@ -251,3 +251,31 @@ model AIAdjustment {
   
   @@map("ai_adjustments")
 }
+
+// 🚀 NEW: AI Feedback storage for user review
+model AIFeedback {
+  id            String   @id @default(cuid())
+  userId        String   // User who received this feedback
+  sessionId     String   // Session this feedback is for
+  weekNumber    Int      // Training week
+  
+  // AI Analysis Results
+  recommendations String[]  // Array of recommendation strings
+  adaptations    Json?     // Training adaptations object
+  reasoning      String?   // AI reasoning (if provided)
+  severity       String    // "low", "medium", "high"
+  source         String    // "ai" or "fallback"
+  userMessage    String    // User-friendly message
+  
+  // Session Context (for display)
+  sessionType    String?   // "easy", "tempo", etc.
+  actualPace     String?   // User's actual pace  
+  targetPace     String?   // Target pace
+  rpe            Int?      // User's RPE
+  difficulty     Int?      // User's difficulty rating
+  
+  createdAt     DateTime  @default(now())
+  
+  @@unique([userId, sessionId]) // One feedback per session
+  @@map("ai_feedback")
+}

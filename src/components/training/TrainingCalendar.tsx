@@ -224,11 +224,55 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
   const [rpeValue, setRpeValue] = useState(5);
   
 
+  // 🚀 NEW: Load stored AI feedback for display
+  const loadStoredAiFeedback = async (sessionId: string) => {
+    if (!userId) return;
+    
+    try {
+      const response = await fetch(`/api/ai-feedback?sessionId=${sessionId}&userId=${userId}`);
+      
+      if (response.ok) {
+        const result = await response.json();
+        console.log('📖 Loaded stored AI feedback:', result.feedback);
+        
+        // Show the stored feedback in the modal
+        setAiAdjustment(result.feedback);
+        setShowAiPanel(true);
+      } else if (response.status === 404) {
+        console.log('ℹ️ No stored AI feedback found for this session');
+        alert('No AI feedback available for this session yet.');
+      } else {
+        console.error('❌ Error loading AI feedback:', response.status);
+        alert('Failed to load AI feedback. Please try again.');
+      }
+    } catch (error) {
+      console.error('❌ Error loading stored AI feedback:', error);
+      alert('Failed to load AI feedback. Please try again.');
+    }
+  };
+
+  // 🚀 NEW: Check if AI feedback exists for a session
+  const checkAiFeedbackExists = async (sessionId: string) => {
+    if (!userId) return false;
+    
+    try {
+      const response = await fetch(`/api/ai-feedback?sessionId=${sessionId}&userId=${userId}`);
+      return response.ok;
+    } catch (error) {
+      console.error('❌ Error checking AI feedback:', error);
+      return false;
+    }
+  };
+
   // 🚀 NEW: Session click handler for detail screen
-  const handleSessionClick = (session: Session) => {
+  const handleSessionClick = async (session: Session) => {
     if (session.type === 'running') {
       setSelectedSession(session);
       setShowFeedback(false); // Start with detail screen, not feedback
+      
+      // Check if AI feedback exists for this session
+      const feedbackExists = await checkAiFeedbackExists(session.id);
+      setHasAiFeedback(prev => ({ ...prev, [session.id]: feedbackExists }));
     }
   };
   const [aiAdjustment, setAiAdjustment] = useState<any>(null);
@@ -247,6 +291,7 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
 
   const [showMotivationalAI, setShowMotivationalAI] = useState(false);
   const [motivationalMessage, setMotivationalMessage] = useState<string>('');
+  const [hasAiFeedback, setHasAiFeedback] = useState<Record<string, boolean>>({});
 
   // Feedback form state
   const [feedbackForm, setFeedbackForm] = useState({
@@ -521,6 +566,11 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
         // Show AI adaptation modal/message
         setAiAdjustment(result.adaptation);
         setShowAiPanel(true);
+        
+        // 🚀 NEW: Mark that AI feedback now exists for this session
+        if (selectedSession) {
+          setHasAiFeedback(prev => ({ ...prev, [selectedSession.id]: true }));
+        }
       }
 
       // 🚀 NEW: Update AI prediction if received
@@ -1978,6 +2028,16 @@ Keep it concise and motivational - this should make them feel good about their t
               >
                 Give Feedback
               </button>
+              {/* 🚀 NEW: See Feedback button (only show if AI feedback exists) */}
+              {hasAiFeedback[selectedSession.id] && (
+                <button
+                  onClick={() => loadStoredAiFeedback(selectedSession.id)}
+                  className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded transition-colors flex items-center gap-2"
+                >
+                  <Brain className="w-4 h-4" />
+                  See AI Feedback
+                </button>
+              )}
               <button
                 onClick={() => setSelectedSession(null)}
                 className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded transition-colors"
