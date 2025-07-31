@@ -311,11 +311,16 @@ export class PerplexityAIService {
     recentSessions: SessionFeedback[],
     currentGoalTime: string
   ): Promise<string> {
+    console.log(`🔑 AI Service - API key present: ${!!this.apiKey}`);
+    
     if (!this.apiKey) {
+      console.log('❌ No API key - returning current goal time');
       return currentGoalTime; // Return current goal as fallback
     }
 
+    console.log(`📝 Building prediction prompt for ${recentSessions.length} sessions, current goal: ${currentGoalTime}`);
     const prompt = this.buildPredictionPrompt(recentSessions, currentGoalTime);
+    console.log(`📝 Prediction prompt: ${prompt.substring(0, 200)}...`);
 
     try {
       const response = await fetch(this.baseUrl, {
@@ -341,6 +346,15 @@ export class PerplexityAIService {
         })
       });
 
+      console.log(`📡 API Response status: ${response.status}`);
+      
+      if (!response.ok) {
+        console.error(`❌ API request failed with status ${response.status}`);
+        const errorText = await response.text();
+        console.error(`❌ Error response: ${errorText}`);
+        return currentGoalTime;
+      }
+      
       const data = await response.json();
       const prediction = data.choices[0]?.message?.content || '';
       
@@ -350,7 +364,7 @@ export class PerplexityAIService {
       
       return extractedTime;
     } catch (error) {
-      console.error('Prediction API Error:', error);
+      console.error('❌ Prediction API Error:', error);
       return currentGoalTime;
     }
   }
@@ -730,8 +744,12 @@ Provide predicted half marathon time in HH:MM:SS format based on session-specifi
    * Extract time from prediction response
    */
   private extractTimeFromPrediction(prediction: string, fallback: string): string {
+    console.log(`🔍 Extracting time from prediction: "${prediction}"`);
     const timeMatch = prediction.match(/\d{1,2}:\d{2}:\d{2}/);
-    return timeMatch ? timeMatch[0] : fallback;
+    console.log(`⏱️ Time pattern match: ${timeMatch?.[0] || 'none found'}`);
+    const result = timeMatch ? timeMatch[0] : fallback;
+    console.log(`✅ Final extracted time: ${result} (fallback: ${fallback})`);
+    return result;
   }
 
   /**

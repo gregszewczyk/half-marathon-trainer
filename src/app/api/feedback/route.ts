@@ -10,6 +10,38 @@ const prisma = new PrismaClient();
 const aiService = new PerplexityAIService();
 const weatherService = new WeatherService();
 
+// 🚀 NEW: Helper function to check if actual pace is significantly faster than planned
+function isPaceSignificantlyFaster(actualPace: string, plannedPace: string): boolean {
+  try {
+    // Convert pace strings (MM:SS) to seconds per km
+    const actualSeconds = timeToSeconds(actualPace);
+    const plannedSeconds = timeToSeconds(plannedPace);
+    
+    if (actualSeconds === 0 || plannedSeconds === 0) return false;
+    
+    // Consider it significant if 15+ seconds per km faster
+    const improvement = plannedSeconds - actualSeconds;
+    console.log(`⏱️ Pace analysis: planned ${plannedPace} (${plannedSeconds}s), actual ${actualPace} (${actualSeconds}s), improvement: ${improvement}s`);
+    
+    return improvement >= 15; // 15+ seconds per km improvement triggers prediction update
+  } catch (error) {
+    console.error('❌ Error comparing paces:', error);
+    return false;
+  }
+}
+
+function timeToSeconds(timeStr: string | undefined): number {
+  if (!timeStr || typeof timeStr !== 'string') return 0;
+  
+  const parts = timeStr.split(':');
+  if (parts.length !== 2) return 0;
+  
+  const minutes = parseInt(parts[0] || '0', 10) || 0;
+  const seconds = parseInt(parts[1] || '0', 10) || 0;
+  
+  return minutes * 60 + seconds;
+}
+
 // 🚀 NEW: Fetch weather data for session
 async function fetchSessionWeatherData(userId: string, sessionDate: Date) {
   try {
@@ -178,8 +210,10 @@ async function updateRaceTimePrediction(userId: string): Promise<string | null> 
       take: 5 // Last 5 quality sessions
     });
     
+    console.log(`📊 Found ${recentFeedback.length} recent quality sessions for prediction analysis`);
+    
     if (recentFeedback.length < 2) {
-      console.log('⚠️ Not enough recent sessions for prediction update');
+      console.log('⚠️ Not enough recent sessions for prediction update (need at least 2)');
       return null;
     }
     
@@ -207,7 +241,9 @@ async function updateRaceTimePrediction(userId: string): Promise<string | null> 
     }));
     
     // Call AI prediction service
+    console.log(`🤖 Calling AI prediction service with ${sessionFeedbackData.length} sessions, current goal: ${currentGoalTime}`);
     const updatedPrediction = await aiService.predictRaceTime(sessionFeedbackData, currentGoalTime);
+    console.log(`🎯 AI returned prediction: ${updatedPrediction}`);
     
     if (updatedPrediction !== currentGoalTime) {
       console.log(`🎯 AI updated prediction: ${currentGoalTime} → ${updatedPrediction}`);
@@ -601,8 +637,21 @@ export async function POST(request: NextRequest) {
 
     // 🚀 NEW: Trigger race time prediction update after significant sessions
     let updatedPrediction = null;
-    if (sessionSubType && ['tempo', 'intervals', 'long'].includes(sessionSubType.toLowerCase()) && completed === 'yes') {
+    console.log(`🔍 Checking prediction trigger: sessionSubType=${sessionSubType}, completed=${completed}`);
+    
+    // Expand criteria to include easy runs with significant pace improvements
+    const shouldTriggerPrediction = sessionSubType && completed === 'yes' && (
+      ['tempo', 'intervals', 'long', 'threshold'].includes(sessionSubType.toLowerCase()) ||
+      // Include easy runs if they're significantly faster than planned
+      (sessionSubType.toLowerCase() === 'easy' && actualPace && plannedPace && 
+       isPaceSignificantlyFaster(actualPace, plannedPace))
+    );
+    
+    if (shouldTriggerPrediction) {
+      console.log(`🚀 Triggering prediction update for ${sessionSubType} session`);
       updatedPrediction = await updateRaceTimePrediction(userId);
+    } else {
+      console.log(`⏭️ Skipping prediction update - criteria not met`);
     }
 
     return NextResponse.json({
