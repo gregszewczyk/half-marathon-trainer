@@ -677,6 +677,35 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
   };
 
   // Utility functions
+  const getCompactText = (fullText: string): string => {
+    if (!fullText) return '';
+    
+    // Extract key info and make it compact
+    if (fullText.includes('dynamic stretching')) {
+      return 'Dynamic stretching';
+    }
+    if (fullText.includes('walking') && fullText.includes('stretching')) {
+      return 'Walk + stretching';
+    }
+    if (fullText.includes('easy jog') && fullText.includes('strides')) {
+      return 'Easy + strides';
+    }
+    if (fullText.includes('easy jog')) {
+      return 'Easy jog';
+    }
+    if (fullText.includes('walk') && fullText.includes('comprehensive')) {
+      return 'Walk + stretch';
+    }
+    if (fullText.includes('recovery') && fullText.includes('stretching')) {
+      return 'Recovery stretch';
+    }
+    
+    // Fallback: take first few words
+    const words = fullText.split(' ');
+    if (words.length <= 3) return fullText;
+    return words.slice(0, 3).join(' ') + '...';
+  };
+
   const getSessionColor = (session: Session): string => {
     let baseColor = '';
     
@@ -771,9 +800,9 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
           const easyMainTime = Math.round((easyMainSetDistance * easyPaceSeconds) / 60);
           const easyTotalTime = 10 + easyMainTime + 5; // warmup + main + cooldown
           details = [
-            `WU: ${session.warmup || '10min easy jog'}`,
+            `WU: ${getCompactText(session.warmup || '10min easy jog')}`,
             `Main: ${easyMainTime}min@${session.pace}/km`,
-            `CD: ${session.cooldown || '5min walk'}`,
+            `CD: ${getCompactText(session.cooldown || '5min walk')}`,
             `Total: ${easyTotalTime}min`
           ];
           break;
@@ -783,9 +812,9 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
           const tempoMainTime = Math.round((mainSetDistance * paceSeconds) / 60);
           const totalTime = 15 + tempoMainTime + 10; // warmup + main + cooldown
           details = [
-            `WU: ${session.warmup || '15min easy + strides'}`,
+            `WU: ${getCompactText(session.warmup || '15min easy + strides')}`,
             `Tempo: ${tempoMainTime}min@${session.pace}/km`,
-            `CD: ${session.cooldown || '10min easy'}`,
+            `CD: ${getCompactText(session.cooldown || '10min easy')}`,
             `Total: ${totalTime}min`
           ];
           break;
@@ -795,9 +824,9 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
           const longMainTime = Math.round((longMainSetDistance * longPaceSeconds) / 60);
           const longTotalTime = 15 + longMainTime + 10; // warmup + main + cooldown
           details = [
-            `WU: ${session.warmup || '15min easy'}`,
+            `WU: ${getCompactText(session.warmup || '15min easy')}`,
             `Long: ${longMainTime}min progressive`,
-            `CD: ${session.cooldown || '10min walk'}`,
+            `CD: ${getCompactText(session.cooldown || '10min walk')}`,
             `Total: ${longTotalTime}min`
           ];
           break;
@@ -807,9 +836,9 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
           const intervalMainTime = Math.round((intervalMainSetDistance * intervalPaceSeconds) / 60);
           const intervalTotalTime = 15 + intervalMainTime + 10; // warmup + main + cooldown
           details = [
-            `WU: ${session.warmup || '15min easy'}`,
+            `WU: ${getCompactText(session.warmup || '15min easy')}`,
             `Intervals: ${intervalMainTime}min@${session.pace}/km`,
-            `CD: ${session.cooldown || '10min easy'}`,
+            `CD: ${getCompactText(session.cooldown || '10min easy')}`,
             `Total: ${intervalTotalTime}min`
           ];
           break;
