@@ -42,6 +42,51 @@ function timeToSeconds(timeStr: string | undefined): number {
   return minutes * 60 + seconds;
 }
 
+// 🚀 NEW: Fetch upcoming training sessions for session swap analysis
+async function fetchUpcomingSessions(userId: string, currentWeek: number) {
+  try {
+    // Get next 2 weeks of sessions from GeneratedSession table
+    const upcomingSessions = await prisma.generatedSession.findMany({
+      where: {
+        userId,
+        week: {
+          gte: currentWeek,
+          lte: currentWeek + 2
+        }
+      },
+      orderBy: [
+        { week: 'asc' },
+        { dayOfWeek: 'asc' }
+      ],
+      select: {
+        week: true,
+        dayOfWeek: true,
+        sessionType: true,
+        sessionSubType: true,
+        distance: true,
+        duration: true,
+        mainSet: true
+      }
+    });
+
+    // Convert to format expected by AI service
+    return upcomingSessions.map(session => ({
+      day: session.dayOfWeek,
+      week: session.week,
+      type: session.sessionType === 'RUNNING' ? 'running' : 
+            session.sessionType === 'GYM' ? 'gym' :
+            session.sessionType === 'CROSS_TRAINING' ? 'cross_training' : 'rest',
+      ...(session.sessionSubType && { subType: session.sessionSubType }),
+      ...(session.distance && { distance: session.distance }),
+      ...(session.duration && { duration: session.duration }),
+      description: session.mainSet || `${session.sessionSubType || session.sessionType} session`
+    }));
+  } catch (error) {
+    console.error('❌ Error fetching upcoming sessions:', error);
+    return [];
+  }
+}
+
 // 🚀 NEW: Fetch weather data for session
 async function fetchSessionWeatherData(userId: string, sessionDate: Date) {
   try {
@@ -569,10 +614,16 @@ export async function POST(request: NextRequest) {
             targetDistance: f.plannedDistance || 5
           }));
 
+          // 🚀 NEW: Fetch upcoming sessions for swap analysis
+          const currentWeekNum = weekNumber ? parseInt(weekNumber) : 1;
+          const upcomingSessions = await fetchUpcomingSessions(userId, currentWeekNum);
+          console.log(`📅 Found ${upcomingSessions.length} upcoming sessions for swap analysis`);
+
           adaptation = await aiService.generateAdaptations(
             sessionFeedbackForAI,
             recentSessionsForAI,
-            weekNumber ? parseInt(weekNumber) : 1
+            currentWeekNum,
+            upcomingSessions
           );
           
           console.log('✅ AI adaptation generated:', adaptation.recommendations.length, 'recommendations');

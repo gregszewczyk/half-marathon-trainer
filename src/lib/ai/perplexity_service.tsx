@@ -18,6 +18,26 @@ export interface SessionFeedback {
   weatherDescription?: string; // Human-readable description
 }
 
+export interface SessionSwapSuggestion {
+  targetDay: string; // "Monday", "Tuesday", etc.
+  targetWeek: number; // Week number
+  currentSession: {
+    type: string; // "easy", "tempo", etc.
+    distance?: number;
+    duration?: string;
+    description: string;
+  };
+  suggestedSession: {
+    type: string; // "cross_training", "rest", "recovery"
+    subType?: string; // "cycling", "swimming", "walk"
+    duration: string;
+    description: string;
+    intensity: 'low' | 'moderate';
+  };
+  reason: string; // Why this swap is recommended
+  priority: 'low' | 'medium' | 'high';
+}
+
 export interface TrainingAdaptation {
   recommendations: string[];
   adaptations: {
@@ -26,6 +46,8 @@ export interface TrainingAdaptation {
     recoveryDays?: number;
     paceAdjustment?: string;
   };
+  // 🚀 NEW: Session swap suggestions
+  sessionSwaps?: SessionSwapSuggestion[];
   reasoning: string;
   severity: 'low' | 'medium' | 'high';
   source: 'ai' | 'fallback'; // Indicates if response is from AI or fallback
@@ -254,7 +276,16 @@ export class PerplexityAIService {
   async generateAdaptations(
     feedback: SessionFeedback,
     recentFeedback: SessionFeedback[],
-    currentWeek: number
+    currentWeek: number,
+    upcomingSessions?: Array<{
+      day: string;
+      week: number;
+      type: string;
+      subType?: string;
+      distance?: number;
+      duration?: string;
+      description: string;
+    }>
   ): Promise<TrainingAdaptation> {
     if (!this.apiKey) {
       console.log('🤖 Using fallback adaptations (Perplexity API not available)');
@@ -296,11 +327,101 @@ export class PerplexityAIService {
       const aiResponse = data.choices[0]?.message?.content || '';
       
       console.log('✅ AI adaptation generated successfully');
-      return this.parseAIResponse(aiResponse, feedback);
+      const adaptation = this.parseAIResponse(aiResponse, feedback);
+
+      // 🚀 NEW: Add session swap suggestions if upcoming sessions are provided
+      if (upcomingSessions && upcomingSessions.length > 0) {
+        console.log('🔄 Generating session swap suggestions...');
+        const sessionSwaps = await this.generateSessionSwapSuggestions(
+          feedback,
+          recentFeedback,
+          upcomingSessions,
+          currentWeek
+        );
+        adaptation.sessionSwaps = sessionSwaps;
+        console.log(`✅ Added ${sessionSwaps.length} session swap suggestions`);
+      }
+
+      return adaptation;
     } catch (error) {
       console.error('Perplexity API Error:', error);
       console.log('🤖 Falling back to basic adaptations due to API error');
       return this.getFallbackAdaptation(feedback);
+    }
+  }
+
+  /**
+   * 🚀 NEW: Analyze upcoming sessions and suggest swaps for recovery
+   */
+  async generateSessionSwapSuggestions(
+    feedback: SessionFeedback,
+    recentFeedback: SessionFeedback[],
+    upcomingSessions: Array<{
+      day: string;
+      week: number;
+      type: string;
+      subType?: string;
+      distance?: number;
+      duration?: string;
+      description: string;
+    }>,
+    currentWeek: number
+  ): Promise<SessionSwapSuggestion[]> {
+    console.log('🔄 Analyzing sessions for potential swaps...');
+    
+    if (!this.apiKey) {
+      console.log('⚠️ No API key - using fallback session analysis');
+      return this.getFallbackSessionSwaps(feedback, upcomingSessions, currentWeek);
+    }
+
+    // Only suggest swaps if there are indicators of fatigue/overload
+    const needsRecovery = this.shouldSuggestRecoverySwaps(feedback, recentFeedback);
+    if (!needsRecovery) {
+      console.log('✅ No recovery swaps needed based on current feedback');
+      return [];
+    }
+
+    const prompt = this.buildSessionSwapPrompt(feedback, recentFeedback, upcomingSessions, currentWeek);
+
+    try {
+      console.log('🤖 Getting AI session swap suggestions...');
+      const response = await fetch(this.baseUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'sonar-pro',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an expert running coach who specializes in recovery and training adaptation. Analyze training feedback and suggest specific session swaps when recovery is needed. Focus on maintaining training volume while reducing intensity.'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          max_tokens: 800,
+          temperature: 0.3
+        })
+      });
+
+      if (!response.ok) {
+        console.error(`❌ Session swap API failed: ${response.status}`);
+        return this.getFallbackSessionSwaps(feedback, upcomingSessions, currentWeek);
+      }
+
+      const data = await response.json();
+      const aiResponse = data.choices[0]?.message?.content || '';
+      
+      console.log('🤖 AI Session Swap Response:', aiResponse);
+      return this.parseSessionSwapResponse(aiResponse, upcomingSessions, currentWeek);
+      
+    } catch (error) {
+      console.error('❌ Error generating session swaps:', error);
+      return this.getFallbackSessionSwaps(feedback, upcomingSessions, currentWeek);
     }
   }
 
@@ -931,5 +1052,252 @@ Be concise but specific with exercise names and durations.
       default: 
         return '8min: 3min walk + 5min stretching';
     }
+  }
+
+  // 🚀 NEW: Session swap helper methods
+
+  /**
+   * Determine if recovery session swaps should be suggested
+   */
+  private shouldSuggestRecoverySwaps(feedback: SessionFeedback, recentFeedback: SessionFeedback[]): boolean {
+    // High RPE/difficulty suggests fatigue
+    if (feedback.rpe >= 8 || feedback.difficulty >= 8) {
+      console.log('🔄 High RPE/difficulty detected - checking for recovery swaps');
+      return true;
+    }
+
+    // Comments indicating fatigue
+    if (feedback.comments) {
+      const fatigueIndicators = ['heavy legs', 'tired', 'exhausted', 'sore', 'sluggish', 'fatigued', 'dead legs'];
+      const hasIndicators = fatigueIndicators.some(indicator => 
+        feedback.comments!.toLowerCase().includes(indicator)
+      );
+      if (hasIndicators) {
+        console.log('🔄 Fatigue indicators in comments - checking for recovery swaps');
+        return true;
+      }
+    }
+
+    // Pattern of recent high RPE/difficulty
+    const recentHighIntensity = recentFeedback
+      .slice(0, 3) // Last 3 sessions
+      .filter(f => f.rpe >= 7 || f.difficulty >= 7);
+    
+    if (recentHighIntensity.length >= 2) {
+      console.log('🔄 Pattern of high intensity sessions - checking for recovery swaps');
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Build prompt for session swap suggestions
+   */
+  private buildSessionSwapPrompt(
+    feedback: SessionFeedback,
+    recentFeedback: SessionFeedback[],
+    upcomingSessions: Array<{
+      day: string;
+      week: number;
+      type: string;
+      subType?: string;
+      distance?: number;
+      duration?: string;
+      description: string;
+    }>,
+    currentWeek: number
+  ): string {
+    const recentSummary = recentFeedback.slice(0, 3).map(f => 
+      `${f.sessionType}: RPE ${f.rpe}, Difficulty ${f.difficulty}, Feeling: ${f.feeling}${f.comments ? `, Comments: ${f.comments}` : ''}`
+    ).join('\n');
+
+    const upcomingSummary = upcomingSessions.slice(0, 5).map(s =>
+      `${s.day} (Week ${s.week}): ${s.description}`
+    ).join('\n');
+
+    return `TRAINING ANALYSIS FOR SESSION SWAPS
+
+CURRENT SESSION FEEDBACK:
+- Type: ${feedback.sessionType}
+- RPE: ${feedback.rpe}/10
+- Difficulty: ${feedback.difficulty}/10
+- Feeling: ${feedback.feeling}
+- Comments: ${feedback.comments || 'None'}
+
+RECENT SESSIONS (last 3):
+${recentSummary}
+
+UPCOMING SESSIONS (next 5):
+${upcomingSummary}
+
+CURRENT TRAINING WEEK: ${currentWeek}
+
+Based on the feedback pattern showing signs of fatigue or overload, suggest 1-2 specific session swaps for the upcoming week that would:
+1. Replace higher intensity sessions with recovery alternatives
+2. Maintain training volume but reduce intensity
+3. Prevent overuse injury and promote recovery
+
+For each swap suggestion, provide:
+- TARGET_DAY: [day of week]
+- TARGET_WEEK: [week number]
+- CURRENT_SESSION: [current session description]
+- SUGGESTED_SESSION: [specific replacement - be detailed about duration and activity]
+- REASON: [why this swap helps recovery]
+- PRIORITY: [high/medium/low]
+
+Format your response as structured data that can be parsed.`;
+  }
+
+  /**
+   * Parse AI response for session swap suggestions
+   */
+  private parseSessionSwapResponse(
+    aiResponse: string,
+    upcomingSessions: Array<{
+      day: string;
+      week: number;
+      type: string;
+      subType?: string;
+      distance?: number;
+      duration?: string;
+      description: string;
+    }>,
+    currentWeek: number
+  ): SessionSwapSuggestion[] {
+    try {
+      const swaps: SessionSwapSuggestion[] = [];
+      
+      // Parse structured response looking for swap suggestions
+      const swapBlocks = aiResponse.split(/TARGET_DAY:|SUGGESTED_SESSION:|REASON:|PRIORITY:/).slice(1);
+      
+      for (let i = 0; i < swapBlocks.length; i += 4) {
+        if (i + 3 >= swapBlocks.length) break;
+        
+        const targetDay = swapBlocks[i]?.split('TARGET_WEEK:')[0]?.trim();
+        const targetWeekText = swapBlocks[i]?.split('TARGET_WEEK:')[1]?.split('CURRENT_SESSION:')[0]?.trim();
+        const currentSessionText = swapBlocks[i]?.split('CURRENT_SESSION:')[1]?.trim();
+        const suggestedSessionText = swapBlocks[i + 1]?.trim();
+        const reason = swapBlocks[i + 2]?.trim();
+        const priority = swapBlocks[i + 3]?.trim().toLowerCase() as 'low' | 'medium' | 'high';
+
+        if (targetDay && currentSessionText && suggestedSessionText && reason) {
+          const targetWeek = parseInt(targetWeekText || currentWeek.toString());
+          
+          // Find matching upcoming session
+          const matchingSession = upcomingSessions.find(s => 
+            s.day.toLowerCase().includes(targetDay.toLowerCase()) && s.week === targetWeek
+          );
+
+          if (matchingSession) {
+            swaps.push({
+              targetDay,
+              targetWeek,
+              currentSession: {
+                type: matchingSession.type,
+                ...(matchingSession.distance !== undefined && { distance: matchingSession.distance }),
+                ...(matchingSession.duration !== undefined && { duration: matchingSession.duration }),
+                description: currentSessionText
+              },
+              suggestedSession: {
+                type: this.inferSessionType(suggestedSessionText),
+                ...(this.inferSessionSubType(suggestedSessionText) ? { subType: this.inferSessionSubType(suggestedSessionText)! } : {}),
+                duration: this.extractDuration(suggestedSessionText),
+                description: suggestedSessionText,
+                intensity: suggestedSessionText.toLowerCase().includes('easy') || 
+                          suggestedSessionText.toLowerCase().includes('walk') ? 'low' : 'moderate'
+              },
+              reason,
+              priority: priority || 'medium'
+            });
+          }
+        }
+      }
+
+      console.log(`✅ Parsed ${swaps.length} session swap suggestions from AI response`);
+      return swaps;
+      
+    } catch (error) {
+      console.error('❌ Error parsing session swap response:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Fallback session swap suggestions when AI is unavailable
+   */
+  private getFallbackSessionSwaps(
+    feedback: SessionFeedback,
+    upcomingSessions: Array<{
+      day: string;
+      week: number;
+      type: string;
+      subType?: string;
+      distance?: number;
+      duration?: string;
+      description: string;
+    }>,
+    currentWeek: number
+  ): SessionSwapSuggestion[] {
+    const swaps: SessionSwapSuggestion[] = [];
+
+    // Look for easy runs to replace with cross-training
+    const nextEasyRun = upcomingSessions
+      .filter(s => s.type === 'running' && s.subType === 'easy')
+      .sort((a, b) => a.week - b.week)[0];
+
+    if (nextEasyRun && (feedback.rpe >= 8 || feedback.difficulty >= 8)) {
+      swaps.push({
+        targetDay: nextEasyRun.day,
+        targetWeek: nextEasyRun.week,
+        currentSession: {
+          type: nextEasyRun.type,
+          ...(nextEasyRun.distance !== undefined && { distance: nextEasyRun.distance }),
+          ...(nextEasyRun.duration !== undefined && { duration: nextEasyRun.duration }),
+          description: nextEasyRun.description
+        },
+        suggestedSession: {
+          type: 'cross_training',
+          subType: 'cycling',
+          duration: '30-40min',
+          description: '30-40min easy cycling or brisk walking for active recovery',
+          intensity: 'low'
+        },
+        reason: 'High RPE/difficulty indicates need for reduced impact recovery session',
+        priority: 'high'
+      });
+    }
+
+    return swaps;
+  }
+
+  /**
+   * Helper methods for session type inference
+   */
+  private inferSessionType(description: string): string {
+    const lower = description.toLowerCase();
+    if (lower.includes('cycling') || lower.includes('bike')) return 'cross_training';
+    if (lower.includes('swimming') || lower.includes('swim')) return 'cross_training';
+    if (lower.includes('walk') || lower.includes('hiking')) return 'cross_training';
+    if (lower.includes('yoga') || lower.includes('stretch')) return 'cross_training';
+    if (lower.includes('rest') || lower.includes('day off')) return 'rest';
+    return 'recovery';
+  }
+
+  private inferSessionSubType(description: string): string | undefined {
+    const lower = description.toLowerCase();
+    if (lower.includes('cycling') || lower.includes('bike')) return 'cycling';
+    if (lower.includes('swimming') || lower.includes('swim')) return 'swimming';
+    if (lower.includes('walk')) return 'walking';
+    if (lower.includes('yoga')) return 'yoga';
+    return undefined;
+  }
+
+  private extractDuration(description: string): string {
+    const durationMatch = description.match(/(\d+)-?(\d+)?\s*min/);
+    if (durationMatch) {
+      return durationMatch[2] ? `${durationMatch[1]}-${durationMatch[2]}min` : `${durationMatch[1]}min`;
+    }
+    return '30min';
   }
 }

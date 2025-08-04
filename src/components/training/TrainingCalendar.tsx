@@ -275,6 +275,40 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
       setHasAiFeedback(prev => ({ ...prev, [session.id]: feedbackExists }));
     }
   };
+
+  // 🚀 NEW: Session swap handlers
+  const handleAcceptSwap = async (swap: any) => {
+    try {
+      console.log('🔄 Accepting session swap:', swap);
+      
+      const response = await fetch('/api/session-swap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          action: 'accept',
+          swap: swap
+        })
+      });
+
+      if (response.ok) {
+        console.log('✅ Session swap accepted successfully');
+        // Refresh sessions to show updated plan
+        window.location.reload(); // Simple refresh for now
+      } else {
+        console.error('❌ Failed to accept session swap');
+      }
+    } catch (error) {
+      console.error('❌ Error accepting session swap:', error);
+    }
+  };
+
+  const handleDeclineSwap = (swap: any) => {
+    console.log('❌ Declined session swap:', swap);
+    // Just close the suggestion - no server action needed
+    // Could implement tracking of declined swaps for learning
+  };
+
   const [aiAdjustment, setAiAdjustment] = useState<any>(null);
   const [showAiPanel, setShowAiPanel] = useState(false);
   
@@ -2452,6 +2486,75 @@ Keep it concise and motivational - this should make them feel good about their t
                       <div key={key} className="py-2 border-b border-gray-600 last:border-b-0">
                         <div className="text-gray-300 capitalize font-medium mb-1">{key.replace(/([A-Z])/g, ' $1').trim()}:</div>
                         <div className="text-cyan-400 whitespace-pre-wrap break-words">{String(value)}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 🚀 NEW: Session Swap Suggestions */}
+              {aiAdjustment.sessionSwaps && aiAdjustment.sessionSwaps.length > 0 && (
+                <div>
+                  <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                    <RotateCcw className="w-5 h-5 text-orange-400" />
+                    Suggested Session Swaps
+                  </h4>
+                  <div className="space-y-4">
+                    {aiAdjustment.sessionSwaps.map((swap: any, index: number) => (
+                      <div key={index} className="bg-gray-700/50 rounded-lg p-4 border border-gray-600">
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex-1">
+                            <div className="text-cyan-300 font-medium mb-1">
+                              {swap.targetDay} (Week {swap.targetWeek})
+                            </div>
+                            <div className="text-sm text-gray-400 mb-2">{swap.reason}</div>
+                          </div>
+                          <div className={`px-2 py-1 rounded text-xs font-medium ${
+                            swap.priority === 'high' ? 'bg-red-900/50 text-red-300' :
+                            swap.priority === 'medium' ? 'bg-yellow-900/50 text-yellow-300' :
+                            'bg-green-900/50 text-green-300'
+                          }`}>
+                            {swap.priority} priority
+                          </div>
+                        </div>
+                        
+                        <div className="grid md:grid-cols-2 gap-4">
+                          {/* Current Session */}
+                          <div className="bg-gray-800/50 rounded p-3 border border-red-800/30">
+                            <div className="text-red-300 font-medium mb-1 text-sm">Current Session</div>
+                            <div className="text-gray-300 text-sm mb-1">{swap.currentSession.description}</div>
+                            {swap.currentSession.distance && (
+                              <div className="text-gray-500 text-xs">Distance: {swap.currentSession.distance}km</div>
+                            )}
+                            {swap.currentSession.duration && (
+                              <div className="text-gray-500 text-xs">Duration: {swap.currentSession.duration}</div>
+                            )}
+                          </div>
+                          
+                          {/* Suggested Replacement */}
+                          <div className="bg-gray-800/50 rounded p-3 border border-green-800/30">
+                            <div className="text-green-300 font-medium mb-1 text-sm">Suggested Replacement</div>
+                            <div className="text-gray-300 text-sm mb-1">{swap.suggestedSession.description}</div>
+                            <div className="text-gray-500 text-xs">Duration: {swap.suggestedSession.duration}</div>
+                            <div className="text-gray-500 text-xs">Intensity: {swap.suggestedSession.intensity}</div>
+                          </div>
+                        </div>
+                        
+                        {/* Action Buttons */}
+                        <div className="flex gap-2 mt-4">
+                          <button 
+                            className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm font-medium transition-colors"
+                            onClick={() => handleAcceptSwap(swap)}
+                          >
+                            Accept Swap
+                          </button>
+                          <button 
+                            className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded text-sm font-medium transition-colors"
+                            onClick={() => handleDeclineSwap(swap)}
+                          >
+                            Keep Original
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>

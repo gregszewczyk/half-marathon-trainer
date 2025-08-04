@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import { ProgressionSafetyValidator, UserTrainingProfile } from '@/lib/training/progressionSafety';
+import { createPaceCalculator } from '@/lib/pace-calculator';
 
 const prisma = new PrismaClient();
 
@@ -334,6 +335,26 @@ Respond with JSON only:
 async function generateAIPaceZones(data: OnboardingData, analysis: any): Promise<any> {
   console.log('🏃 STARTING AI PACE ZONES');
   
+  // 🚀 NEW: Try our comprehensive pace calculator first as a baseline
+  let comprehensivePaces: any = null;
+  try {
+    const paceCalculator = createPaceCalculator(data);
+    const paceZones = paceCalculator.calculatePaceZones();
+    comprehensivePaces = {
+      target: paceZones.marathon,
+      easy: paceZones.easy,
+      tempo: paceZones.threshold,
+      interval: paceZones.interval,
+      recovery: paceZones.recovery,
+      long: paceCalculator.getPaceForSession('running', 'long'),
+      fartlek: paceCalculator.getPaceForSession('running', 'fartlek'),
+      repetition: paceZones.repetition
+    };
+    console.log('🧮 Comprehensive pace baseline calculated:', comprehensivePaces);
+  } catch (error) {
+    console.log('⚠️ Comprehensive pace calculator failed, will rely on AI only');
+  }
+  
   const prompt = `Based on this runner's profile, calculate optimal training pace zones:
 
 RUNNER DATA:
@@ -390,14 +411,23 @@ Respond with JSON only:
     
     try {
       const jsonMatch = aiText.match(/\{[\s\S]*\}/);
-      return jsonMatch ? JSON.parse(jsonMatch[0]) : calculateStaticPaceZones(data.raceType, data.targetTime);
+      const aiPaces = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+      
+      // 🚀 NEW: If AI succeeded, return AI paces; otherwise use comprehensive calculator
+      if (aiPaces && aiPaces.easy && aiPaces.tempo) {
+        console.log('✅ Using AI-generated pace zones');
+        return aiPaces;
+      } else {
+        console.log('⚠️ AI pace zones invalid, using comprehensive calculator');
+        return comprehensivePaces || calculateStaticPaceZones(data.raceType, data.targetTime, data);
+      }
     } catch (parseError) {
       console.error('Pace zones parse error:', parseError);
-      return calculateStaticPaceZones(data.raceType, data.targetTime);
+      return comprehensivePaces || calculateStaticPaceZones(data.raceType, data.targetTime, data);
     }
   } catch (fetchError) {
     console.error('Pace zones fetch error:', fetchError);
-    return calculateStaticPaceZones(data.raceType, data.targetTime);
+    return comprehensivePaces || calculateStaticPaceZones(data.raceType, data.targetTime, data);
   }
 }
 async function generateAIProgression(data: OnboardingData, analysis: any, totalWeeks: number): Promise<any> {
@@ -813,8 +843,8 @@ async function generateAIWeekSessions(
 async function generateStaticTrainingPlan(userId: string, data: OnboardingData): Promise<GeneratedSessionCreate[]> {
   const sessions: GeneratedSessionCreate[] = [];
   
-  // Calculate pace zones
-  const paceZones = calculateStaticPaceZones(data.raceType, data.targetTime);
+  // Calculate pace zones with user profile data
+  const paceZones = calculateStaticPaceZones(data.raceType, data.targetTime, data);
   
   // Generate dynamic weeks based on race date
   const totalWeeks = calculateTrainingWeeks(data.raceDate);
@@ -1009,34 +1039,73 @@ async function generateStaticWeekSessions(
 
 // 🔧 HELPER FUNCTIONS
 
-function calculateStaticPaceZones(raceType: string, targetTime: string) {
-  let targetPaceSeconds = 360; // Default 6:00/km
+// 🚀 NEW: Calculate comprehensive pace zones using scientific formulas
+function calculateStaticPaceZones(raceType: string, targetTime: string, userProfile?: any) {
+  console.log(`🏃 Calculating comprehensive pace zones for ${raceType}, target: ${targetTime}`);
   
-  if (targetTime !== "FINISH") {
-    const timeSeconds = timeStringToSeconds(targetTime);
-    switch (raceType) {
-      case 'FIVE_K':
-        targetPaceSeconds = timeSeconds / 5;
-        break;
-      case 'TEN_K':
-        targetPaceSeconds = timeSeconds / 10;
-        break;
-      case 'HALF_MARATHON':
-        targetPaceSeconds = timeSeconds / 21.1;
-        break;
-      case 'FULL_MARATHON':
-        targetPaceSeconds = timeSeconds / 42.2;
-        break;
-    }
-  }
-  
-  return {
-    target: secondsToPace(targetPaceSeconds),
-    easy: secondsToPace(Math.floor(targetPaceSeconds * 1.2)),
-    tempo: secondsToPace(Math.floor(targetPaceSeconds * 0.95)),
-    interval: secondsToPace(Math.floor(targetPaceSeconds * 0.85)),
-    recovery: secondsToPace(Math.floor(targetPaceSeconds * 1.3))
+  // Create a fallback profile if none provided
+  const profileForCalculation = userProfile || {
+    targetTime,
+    raceType,
+    fitnessLevel: 'INTERMEDIATE'
   };
+  
+  try {
+    // Use our comprehensive pace calculator
+    const paceCalculator = createPaceCalculator(profileForCalculation);
+    const paceZones = paceCalculator.calculatePaceZones();
+    
+    console.log(`✅ Comprehensive pace zones calculated:`, paceZones);
+    
+    // Convert our comprehensive zones to the format expected by the rest of the code
+    return {
+      target: paceZones.marathon,      // Use marathon pace as target for race
+      easy: paceZones.easy,           // Scientific easy pace
+      tempo: paceZones.threshold,     // Use threshold pace for tempo
+      interval: paceZones.interval,   // Scientific VO2 max pace
+      recovery: paceZones.recovery,   // Scientific recovery pace
+      long: paceCalculator.getPaceForSession('running', 'long'), // Special long run pace
+      fartlek: paceCalculator.getPaceForSession('running', 'fartlek'), // Fartlek pace
+      progression: paceZones.easy,    // Progression runs start easy
+      repetition: paceZones.repetition // Add repetition pace for speed work
+    };
+  } catch (error) {
+    console.error('❌ Error with comprehensive pace calculator, falling back to simple calculation:', error);
+    
+    // Fallback to improved simple calculation (better than original but not as comprehensive)
+    let targetPaceSeconds = 360; // Default 6:00/km
+    
+    if (targetTime !== "FINISH") {
+      const timeSeconds = timeStringToSeconds(targetTime);
+      switch (raceType) {
+        case 'FIVE_K':
+          targetPaceSeconds = timeSeconds / 5;
+          break;
+        case 'TEN_K':
+          targetPaceSeconds = timeSeconds / 10;
+          break;
+        case 'HALF_MARATHON':
+          targetPaceSeconds = timeSeconds / 21.1;
+          break;
+        case 'FULL_MARATHON':
+          targetPaceSeconds = timeSeconds / 42.2;
+          break;
+      }
+    }
+    
+    // Improved multipliers based on research (better than original 1.2, 0.95, 0.85)
+    return {
+      target: secondsToPace(targetPaceSeconds),
+      easy: secondsToPace(Math.floor(targetPaceSeconds * 1.15)),     // 15% slower than target
+      tempo: secondsToPace(Math.floor(targetPaceSeconds * 0.92)),    // 8% faster than target
+      interval: secondsToPace(Math.floor(targetPaceSeconds * 0.82)), // 18% faster than target
+      recovery: secondsToPace(Math.floor(targetPaceSeconds * 1.25)), // 25% slower than target
+      long: secondsToPace(Math.floor(targetPaceSeconds * 1.08)),     // 8% slower than target for long runs
+      fartlek: secondsToPace(Math.floor(targetPaceSeconds * 0.90)),  // Between tempo and interval
+      progression: secondsToPace(Math.floor(targetPaceSeconds * 1.15)), // Start easy
+      repetition: secondsToPace(Math.floor(targetPaceSeconds * 0.78))    // Very fast for speed
+    };
+  }
 }
 
 function getStaticWeeklyDistances(raceType: string, week: number) {
