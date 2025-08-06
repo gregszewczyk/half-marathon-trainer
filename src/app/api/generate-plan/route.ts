@@ -1108,20 +1108,44 @@ function calculateStaticPaceZones(raceType: string, targetTime: string, userProf
   }
 }
 
+// 🚀 NEW: Club run constrained distances - Monday/Wednesday max 5km
 function getStaticWeeklyDistances(raceType: string, week: number) {
   const baseDistances = {
+    // Week 1: Easy start
     1: { easy: 4, tempo: 4, interval: 3, long: 8 },
+    
+    // Week 2: Light build  
     2: { easy: 5, tempo: 5, interval: 4, long: 10 },
-    3: { easy: 6, tempo: 6, interval: 5, long: 12 },
-    4: { easy: 4, tempo: 4, interval: 4, long: 8 },
-    5: { easy: 6, tempo: 7, interval: 6, long: 14 },
-    6: { easy: 7, tempo: 8, interval: 7, long: 16 },
-    7: { easy: 8, tempo: 9, interval: 8, long: 18 },
-    8: { easy: 5, tempo: 6, interval: 6, long: 14 },
-    9: { easy: 7, tempo: 8, interval: 8, long: 20 },
-    10: { easy: 6, tempo: 7, interval: 7, long: 16 },
-    11: { easy: 4, tempo: 5, interval: 5, long: 10 },
-    12: { easy: 3, tempo: 3, interval: 3, long: 6 }
+    
+    // Week 3: Build with club constraints - compensate with Thursday/Saturday
+    3: { easy: 5, tempo: 5, interval: 5, long: 13, thursday_easy: 8 }, // 🔒 Club: Mon/Wed=5km, compensate Thu+Sat
+    
+    // Week 4: Recovery
+    4: { easy: 5, tempo: 5, interval: 4, long: 10, thursday_easy: 6 }, // 🔒 Club constraints maintained
+    
+    // Week 5: Build phase - compensate with longer Thu/Sat
+    5: { easy: 5, tempo: 5, interval: 6, long: 15, thursday_easy: 9 }, // 🔒 Club: 5km, compensate elsewhere
+    
+    // Week 6: Continue build
+    6: { easy: 5, tempo: 5, interval: 7, long: 16, thursday_easy: 10 }, // 🔒 Club constraints
+    
+    // Week 7: Peak build
+    7: { easy: 5, tempo: 5, interval: 8, long: 18, thursday_easy: 11 }, // 🔒 Peak with constraints
+    
+    // Week 8: Recovery
+    8: { easy: 5, tempo: 5, interval: 6, long: 12, thursday_easy: 7 }, // 🔒 Recovery with constraints
+    
+    // Week 9: Peak week - max compensation
+    9: { easy: 5, tempo: 5, interval: 8, long: 20, thursday_easy: 12 }, // 🔒 Peak long run + Thu compensation
+    
+    // Week 10: Step back
+    10: { easy: 5, tempo: 5, interval: 7, long: 16, thursday_easy: 8 }, // 🔒 Step back
+    
+    // Week 11: Taper
+    11: { easy: 4, tempo: 4, interval: 5, long: 10, thursday_easy: 5 }, // Taper
+    
+    // Week 12: Race week
+    12: { easy: 3, tempo: 3, interval: 3, long: 6, thursday_easy: 3 } // Race week
   };
   
   const multipliers = {

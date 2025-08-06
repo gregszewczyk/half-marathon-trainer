@@ -112,15 +112,17 @@ export async function POST(request: NextRequest) {
           await prisma.generatedSession.update({
             where: { id: session.id },
             data: {
-              // Store original pace if not already stored
+              // 🚀 FIXED: Store original pace and distance properly
               ...(session.pace && !session.originalData && {
                 originalData: {
                   pace: session.pace,
+                  distance: session.distance, // Also store original distance
                   updatedAt: new Date().toISOString(),
                   reason: 'Pace calculator upgrade'
                 }
               }),
               pace: newPace,
+              // 🚀 IMPORTANT: Do NOT modify distance - only update pace
               aiModified: true,
               aiReason: 'Updated with comprehensive pace calculator (VDOT-based)',
               lastModified: new Date()
