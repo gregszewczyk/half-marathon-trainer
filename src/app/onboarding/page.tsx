@@ -80,6 +80,13 @@ interface OnboardingFormData {
   runningClub: string
   clubSchedule: string[]
   keepClubRuns: boolean
+  // 🚀 NEW: Club run distance constraints
+  clubConstraints: Array<{
+    day: string
+    time: string
+    maxDistance: number | null
+    sessionType: 'easy' | 'tempo' | 'intervals'
+  }>
   
   // Personal & Location
   age: string
@@ -133,6 +140,7 @@ const INITIAL_FORM_DATA: OnboardingFormData = {
   runningClub: '',
   clubSchedule: [],
   keepClubRuns: true,
+  clubConstraints: [],
   age: '',
   gender: '',
   location: '',
@@ -291,7 +299,16 @@ export default function OnboardingPage() {
         gymDaysPerWeek: formData.gymDaysPerWeek ? parseInt(formData.gymDaysPerWeek, 10) : undefined,
         gymType: formData.gymType || undefined,
         runningClub: formData.runningClub || undefined,
-        clubSchedule: formData.clubSchedule,
+        clubSchedule: formData.clubSchedule.map(schedule => {
+          const [day, time] = schedule.split(' ');
+          const constraint = formData.clubConstraints.find(c => c.day === day && c.time === time);
+          
+          // Enhanced format: "Monday 5PM|5km|easy" or legacy format: "Monday 5PM"
+          if (constraint && constraint.maxDistance) {
+            return `${schedule}|${constraint.maxDistance}km|${constraint.sessionType}`;
+          }
+          return schedule; // Legacy format for backward compatibility
+        }),
         keepClubRuns: formData.keepClubRuns,
         age: formData.age ? parseInt(formData.age, 10) : undefined,
         gender: formData.gender || undefined,
@@ -1309,28 +1326,99 @@ export default function OnboardingPage() {
             </Card>
           )}
 
-          {/* Selected Club Times Display */}
+          {/* 🚀 ENHANCED: Club Times with Distance Constraints */}
           {formData.clubSchedule.length > 0 && (
             <div>
-              <label className="block text-sm font-medium mb-3">Selected Club Times:</label>
-              <div className="flex flex-wrap gap-2">
-                {formData.clubSchedule.map((schedule) => (
-                  <div 
-                    key={schedule}
-                    className="flex items-center gap-2 bg-primary-400/20 text-primary-300 px-3 py-1 rounded-full text-sm"
-                  >
-                    <span>{schedule}</span>
-                    <button
-                      onClick={() => {
-                        const updated = formData.clubSchedule.filter(s => s !== schedule)
-                        updateFormData({ clubSchedule: updated })
-                      }}
-                      className="text-primary-200 hover:text-white transition-colors"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
+              <label className="block text-sm font-medium mb-3">Club Run Details & Distance Limits:</label>
+              <div className="space-y-3">
+                {formData.clubSchedule.map((schedule, index) => {
+                  const [day, time] = schedule.split(' ');
+                  // Find existing constraint or create new one
+                  const existingConstraint = formData.clubConstraints.find(c => c.day === day && c.time === time);
+                  const constraint = existingConstraint || { day, time, maxDistance: null, sessionType: 'easy' as const };
+                  
+                  return (
+                    <Card key={schedule} className="p-4 bg-gray-800/30">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="font-medium text-primary-300">{schedule}</div>
+                        <button
+                          onClick={() => {
+                            const updated = formData.clubSchedule.filter(s => s !== schedule);
+                            const updatedConstraints = formData.clubConstraints.filter(c => !(c.day === day && c.time === time));
+                            updateFormData({ clubSchedule: updated, clubConstraints: updatedConstraints });
+                          }}
+                          className="text-red-400 hover:text-red-300 transition-colors"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                      
+                      <div className="grid md:grid-cols-2 gap-3">
+                        {/* Max Distance Input */}
+                        <div>
+                          <label className="block text-xs text-gray-400 mb-1">Max Distance (km)</label>
+                          <input
+                            type="number"
+                            min="1"
+                            max="50"
+                            step="0.5"
+                            placeholder="e.g. 5"
+                            className="w-full p-2 bg-gray-700 rounded border border-gray-600 focus:border-primary-400 text-sm"
+                            value={constraint.maxDistance || ''}
+                            onChange={(e) => {
+                              const distance = e.target.value ? parseFloat(e.target.value) : null;
+                              const updatedConstraints = formData.clubConstraints.filter(c => !(c.day === day && c.time === time));
+                              if (distance || constraint.sessionType !== 'easy') {
+                                updatedConstraints.push({ ...constraint, maxDistance: distance });
+                              }
+                              updateFormData({ clubConstraints: updatedConstraints });
+                            }}
+                          />
+                          <div className="text-xs text-gray-500 mt-1">Leave empty for no limit</div>
+                        </div>
+                        
+                        {/* Session Type */}
+                        <div>
+                          <label className="block text-xs text-gray-400 mb-1">Session Type</label>
+                          <select
+                            className="w-full p-2 bg-gray-700 rounded border border-gray-600 focus:border-primary-400 text-sm"
+                            value={constraint.sessionType}
+                            onChange={(e) => {
+                              const sessionType = e.target.value as 'easy' | 'tempo' | 'intervals';
+                              const updatedConstraints = formData.clubConstraints.filter(c => !(c.day === day && c.time === time));
+                              if (constraint.maxDistance || sessionType !== 'easy') {
+                                updatedConstraints.push({ ...constraint, sessionType });
+                              }
+                              updateFormData({ clubConstraints: updatedConstraints });
+                            }}
+                          >
+                            <option value="easy">Easy Run</option>
+                            <option value="tempo">Tempo Run</option>
+                            <option value="intervals">Intervals</option>
+                          </select>
+                        </div>
+                      </div>
+                      
+                      {constraint.maxDistance && (
+                        <div className="mt-2 text-xs text-gray-400 bg-gray-700/50 p-2 rounded">
+                          💡 AI will keep this session ≤ {constraint.maxDistance}km and adjust other days to compensate
+                        </div>
+                      )}
+                    </Card>
+                  );
+                })}
+              </div>
+              
+              <div className="mt-3 text-sm text-gray-400 bg-blue-900/20 border border-blue-700/50 rounded-lg p-3">
+                <div className="font-medium text-blue-300 mb-1">💡 Why set distance limits?</div>
+                <div>
+                  If your club runs have fixed routes (e.g., 5km loop), set the max distance so our AI can:
+                  <ul className="list-disc ml-4 mt-1">
+                    <li>Keep club runs within your constraints</li>
+                    <li>Add extra distance to other training days to maintain progression</li>
+                    <li>Ensure you still hit your weekly mileage targets</li>
+                  </ul>
+                </div>
               </div>
             </div>
           )}

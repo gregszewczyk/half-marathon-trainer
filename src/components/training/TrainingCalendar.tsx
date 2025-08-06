@@ -888,8 +888,9 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
         }
       }
       
-      const mainSetDistance = getMainSetDistance(session);
-      mainText = `${session.subType.charAt(0).toUpperCase() + session.subType.slice(1)} ${mainSetDistance}K${clubText}`;
+      // 🚀 FIXED: Use actual session.distance instead of parsing from mainSet text
+      const displayDistance = session.distance || getMainSetDistance(session);
+      mainText = `${session.subType.charAt(0).toUpperCase() + session.subType.slice(1)} ${displayDistance}K${clubText}`;
       
       const workoutTime = calculateDuration(session.distance || 5, session.pace || '6:30');
       

@@ -680,14 +680,22 @@ async function generateAIWeekSessions(
     // 1. Running club sessions (fixed)
     const clubSession = clubDays.find(club => club.day === day);
     if (clubSession && data.keepClubRuns && runningSessions < maxRunningSessions) {
-      const sessionType = getAIRunningSessionType(runningSessions, day, weekPlan, aiAnalysis);
+      // 🚀 ENHANCED: Use club constraints for AI sessions too
+      const sessionType = clubSession.sessionType || getAIRunningSessionType(runningSessions, day, weekPlan, aiAnalysis);
+      const plannedDistance = getAIDistanceForType(sessionType, weekPlan);
+      const constrainedDistance = clubSession.maxDistance 
+        ? Math.min(plannedDistance, clubSession.maxDistance) 
+        : plannedDistance;
+      
+      console.log(`🤖🔒 AI Club session: ${day} ${sessionType} ${constrainedDistance}km (limit: ${clubSession.maxDistance || 'none'})`);
+      
       sessions.push({
         userId,
         week,
         dayOfWeek: day,
         sessionType: 'RUNNING',
         sessionSubType: sessionType,
-        distance: getAIDistanceForType(sessionType, weekPlan),
+        distance: constrainedDistance, // 🚀 CONSTRAINED: Respect club distance limit
         pace: getPaceForType(sessionType, paceZones),
         duration: null,
         scheduledTime: clubSession.time,
@@ -880,14 +888,25 @@ async function generateStaticWeekSessions(
     // 1. Running club sessions (fixed)
     const clubSession = clubDays.find(club => club.day === day);
     if (clubSession && data.keepClubRuns && runningSessions < maxRunningSessions) {
-      const sessionType = getRunningSessionType(runningSessions, day);
+      // 🚀 ENHANCED: Use club constraints for session type and distance
+      const sessionType = clubSession.sessionType || getRunningSessionType(runningSessions, day);
+      const plannedDistance = getDistanceForType(sessionType, weekPlan);
+      const constrainedDistance = clubSession.maxDistance 
+        ? Math.min(plannedDistance, clubSession.maxDistance) 
+        : plannedDistance;
+      
+      // Log constraint enforcement
+      if (clubSession.maxDistance && plannedDistance > clubSession.maxDistance) {
+        console.log(`🔒 Club constraint enforced: ${day} ${sessionType} reduced from ${plannedDistance}km to ${constrainedDistance}km`);
+      }
+      
       sessions.push({
         userId,
         week,
         dayOfWeek: day,
         sessionType: 'RUNNING',
         sessionSubType: sessionType,
-        distance: getDistanceForType(sessionType, weekPlan),
+        distance: constrainedDistance, // 🚀 CONSTRAINED: Respect club distance limit
         pace: getPaceForType(sessionType, paceZones),
         duration: null,
         scheduledTime: clubSession.time,
@@ -897,9 +916,13 @@ async function generateStaticWeekSessions(
         mainSet: getMainSet(sessionType, weekPlan, true, data.runningClub),
         cooldown: await getCooldown(sessionType),
         targetRPE: getTargetRPE(sessionType),
-        aiModified: false,
-        originalData: null,
-        aiReason: null,
+        aiModified: !!(clubSession.maxDistance && plannedDistance > clubSession.maxDistance), // Mark as modified if constrained
+        originalData: clubSession.maxDistance && plannedDistance > clubSession.maxDistance 
+          ? { distance: plannedDistance, reason: 'Club distance constraint applied' } 
+          : null,
+        aiReason: clubSession.maxDistance && plannedDistance > clubSession.maxDistance 
+          ? `Distance limited to ${constrainedDistance}km due to club run constraint (planned: ${plannedDistance}km)` 
+          : null,
         planVersion: "1.0"
       });
       runningSessions++;
@@ -1167,12 +1190,39 @@ function getStaticWeeklyDistances(raceType: string, week: number) {
   };
 }
 
-function parseClubSchedule(clubSchedule: string[]): { day: string; time: string }[] {
+// 🚀 ENHANCED: Parse club schedule with distance constraints
+function parseClubSchedule(clubSchedule: string[]): Array<{ 
+  day: string; 
+  time: string; 
+  maxDistance?: number; 
+  sessionType?: string; 
+}> {
   return clubSchedule.map(schedule => {
-    const parts = schedule.split(' ');
-    const day = parts[0] || '';
-    const time = parts.slice(1).join(' ').replace(/[^\d:]/g, '') || '17:00';
-    return { day, time };
+    // Enhanced format: "Monday 5PM|5km|easy" or legacy: "Monday 5PM"
+    const [dayTime, distance, sessionType] = schedule.split('|');
+    
+    if (distance && sessionType) {
+      // Enhanced format with constraints
+      const parts = dayTime.split(' ');
+      const day = parts[0] || '';
+      const time = parts.slice(1).join(' ').replace(/[^\d:]/g, '') || '17:00';
+      const maxDistance = parseInt(distance.replace('km', '')) || null;
+      
+      console.log(`🔒 Club constraint: ${day} ${time} max ${maxDistance}km (${sessionType})`);
+      
+      return { 
+        day, 
+        time, 
+        ...(maxDistance > 0 && { maxDistance }),
+        ...(sessionType && { sessionType }) 
+      };
+    } else {
+      // Legacy format - no constraints
+      const parts = schedule.split(' ');
+      const day = parts[0] || '';
+      const time = parts.slice(1).join(' ').replace(/[^\d:]/g, '') || '17:00';
+      return { day, time };
+    }
   });
 }
 
