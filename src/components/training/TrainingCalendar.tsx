@@ -1465,20 +1465,6 @@ Keep it concise and motivational - this should make them feel good about their t
           </div>
           
           <div className="flex items-center gap-6">
-            <div className="text-center">
-              <div className="text-xs text-gray-400">Goal</div>
-              <div className="text-sm font-bold text-green-400 font-mono">{goalTime}</div>
-            </div>
-            <div className="text-center">
-              <div className="text-xs text-gray-400">Predicted</div>
-              <div className={`text-sm font-bold font-mono ${
-                predictedTime === goalTime ? 'text-cyan-400' :
-                predictedTime < goalTime ? 'text-green-400' : 'text-yellow-400'
-              }`}>
-                {predictedTime}
-              </div>
-            </div>
-            
             {/* Test Button */}
             <button
               onClick={handleResubmitLastSession}
