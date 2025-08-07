@@ -249,8 +249,9 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
         setAiAdjustment(adaptationFormat);
         setShowAiPanel(true);
       } else if (response.status === 404) {
-        console.log('ℹ️ No stored AI feedback found for this session');
-        alert('No AI feedback available for this session yet.');
+        const error = await response.json();
+        console.log('ℹ️ No stored AI feedback found for this session:', error);
+        alert(`No AI feedback available for this session yet. ${error.error || ''}`);
       } else {
         console.error('❌ Error loading AI feedback:', response.status);
         alert('Failed to load AI feedback. Please try again.');
@@ -614,6 +615,11 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
         // Show AI adaptation modal/message
         setAiAdjustment(result.adaptation);
         setShowAiPanel(true);
+      } else {
+        // 🆕 NEW: Show motivational message when no adaptation needed (good performance)
+        console.log('✅ No AI adaptation needed - showing motivational message');
+        setMotivationalMessage(`✅ AI Coach Analysis: Your session performance looks excellent! Training plan remains on track for your ${formatRaceDisplay()} goal. No adjustments needed.`);
+        setShowMotivationalAI(true);
       }
       
       // 🚀 NEW: Always check if AI feedback was stored after submission

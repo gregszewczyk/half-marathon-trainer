@@ -43,9 +43,13 @@ export async function GET(request: NextRequest) {
     });
 
     if (!aiFeedback) {
-      console.log(`📝 No AI feedback found for session ${sessionId}`);
+      console.log(`📝 No AI feedback found for userId=${userId}, sessionId=${sessionId}`);
       return NextResponse.json(
-        { error: 'No AI feedback found for this session' },
+        { 
+          success: false,
+          error: 'No AI feedback found for this session',
+          debug: { userId, sessionId }
+        },
         { status: 404 }
       );
     }
