@@ -37,30 +37,36 @@ export function useTrainingStats(userId: string = 'default'): TrainingStats {
         const today = new Date();
         const daysToRace = Math.ceil((raceDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
         
-        // Try to fetch feedback data
+        // Try to fetch training plan data (includes user profile with AI predicted time)
         let weekCompletion = 0;
+        let predictedTime = "2:00:00"; // Default fallback
         
         try {
-          const response = await fetch(`/api/feedback?weekNumber=1&userId=${userId}`);
+          const response = await fetch(`/api/training-plan?userId=${userId}&week=1`);
           
           if (response.ok) {
-            const { feedback } = await response.json();
-            console.log(`📊 Data for ${userId}:`, feedback);
+            const data = await response.json();
+            console.log(`📊 Training plan data for ${userId}:`, data);
             
-            const totalRunningSessions = 4;
-            const completedSessions = Array.isArray(feedback) ? 
-              feedback.filter((f: any) => f.completed === 'yes' && f.sessionType === 'running').length : 0;
+            // Get AI predicted time from user profile
+            if (data.userProfile?.aiPredictedTime) {
+              predictedTime = data.userProfile.aiPredictedTime;
+              console.log(`🎯 AI Predicted time: ${predictedTime}`);
+            }
             
-            weekCompletion = Math.round((completedSessions / totalRunningSessions) * 100);
-            console.log(`✅ ${userId} completion: ${weekCompletion}%`);
+            // Calculate completion from sessions
+            if (data.sessions) {
+              const runningSessions = data.sessions.filter((s: any) => s.type === 'running');
+              const completedSessions = runningSessions.filter((s: any) => s.completed).length;
+              weekCompletion = Math.round((completedSessions / runningSessions.length) * 100);
+              console.log(`✅ ${userId} completion: ${weekCompletion}%`);
+            }
           } else {
             console.log(`⚠️ API returned ${response.status}, using default values`);
-            // Don't throw error, just use default values
             weekCompletion = 0;
           }
         } catch (apiError) {
           console.log('⚠️ API call failed, using default values:', apiError instanceof Error ? apiError.message : 'Unknown error');
-          // Don't throw error, just use default values
           weekCompletion = 0;
         }
 
@@ -68,7 +74,7 @@ export function useTrainingStats(userId: string = 'default'): TrainingStats {
           daysToRace,
           weekCompletion,
           weekDistance: 22,
-          predictedTime: "2:00:00",
+          predictedTime,
           isLoading: false
         });
         
@@ -84,7 +90,7 @@ export function useTrainingStats(userId: string = 'default'): TrainingStats {
           daysToRace,
           weekCompletion: 0,
           weekDistance: 22,
-          predictedTime: "2:00:00",
+          predictedTime: "2:00:00", // Keep fallback for error case
           isLoading: false
         });
       }
