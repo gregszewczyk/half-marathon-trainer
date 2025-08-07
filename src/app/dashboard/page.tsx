@@ -24,6 +24,8 @@ interface TrainingStats {
   totalSessions: number;
   completedSessions: number;
   loading: boolean;
+  goalTime: string;
+  predictedTime: string;
 }
 
 // 🚀 NEW: Calculate current week based on completed weeks
@@ -71,7 +73,9 @@ export default function Dashboard() {
     totalWeeks: 12,
     totalSessions: 0,
     completedSessions: 0,
-    loading: true
+    loading: true,
+    goalTime: "2:00:00",
+    predictedTime: "2:00:00"
   });
 
   // 🔧 FIXED: Memoize session data to prevent re-renders
@@ -180,12 +184,22 @@ export default function Dashboard() {
         ]);
         
         let totalWeeks = 12; // Default fallback
+        let goalTime = "2:00:00"; // Default fallback
+        let predictedTime = "2:00:00"; // Default fallback
+        
         if (sessionsResponse.ok) {
           const sessionsData = await sessionsResponse.json();
           const sessions = sessionsData.sessions || [];
           if (sessions.length > 0) {
             totalWeeks = Math.max(...sessions.map((s: any) => s.week));
             console.log(`📊 Calculated total weeks from sessions: ${totalWeeks}`);
+          }
+          
+          // Extract goal time and AI predicted time from user profile
+          if (sessionsData.userProfile) {
+            goalTime = sessionsData.userProfile.targetTime || "2:00:00";
+            predictedTime = sessionsData.userProfile.aiPredictedTime || "2:00:00";
+            console.log(`🎯 Goal time: ${goalTime}, AI predicted: ${predictedTime}`);
           }
         }
         
@@ -204,7 +218,9 @@ export default function Dashboard() {
             totalWeeks, // 🚀 NEW: Dynamic total weeks from sessions
             totalSessions: totalRunningSessions,
             completedSessions: completedCount,
-            loading: false
+            loading: false,
+            goalTime, // 🎯 NEW: Goal time from user profile
+            predictedTime // 🤖 NEW: AI predicted time
           });
           
           console.log(`✅ Training stats loaded: ${completedCount}/${totalRunningSessions} (${completionPercentage}%)`);
@@ -216,7 +232,9 @@ export default function Dashboard() {
             totalWeeks, // Use calculated total weeks even on feedback failure
             totalSessions: 4,
             completedSessions: 0,
-            loading: false
+            loading: false,
+            goalTime, // 🎯 Use extracted goal time even on feedback failure
+            predictedTime // 🤖 Use extracted predicted time even on feedback failure
           });
         }
       } catch (error: unknown) {
@@ -230,7 +248,9 @@ export default function Dashboard() {
           totalWeeks: 12, // Default fallback on error
           totalSessions: 4,
           completedSessions: 0,
-          loading: false
+          loading: false,
+          goalTime: "2:00:00", // Default fallback on error
+          predictedTime: "2:00:00" // Default fallback on error
         });
       }
     };
@@ -407,6 +427,24 @@ export default function Dashboard() {
             <div className="flex items-center gap-2">
               <span className="text-gray-400">Plan:</span>
               <span className="font-medium text-cyan-400">AI Custom</span>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <span className="text-gray-400">Goal:</span>
+              {trainingStats.loading ? (
+                <div className="w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <span className="font-medium text-green-400">{trainingStats.goalTime}</span>
+              )}
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <span className="text-gray-400">AI Predicted:</span>
+              {trainingStats.loading ? (
+                <div className="w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <span className="font-medium text-yellow-400">{trainingStats.predictedTime}</span>
+              )}
             </div>
 
           </div>
