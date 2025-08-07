@@ -236,7 +236,17 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
         console.log('📖 Loaded stored AI feedback:', result.feedback);
         
         // Show the stored feedback in the modal
-        setAiAdjustment(result.feedback);
+        // Convert the stored format to the expected format
+        const adaptationFormat = {
+          recommendations: result.feedback.recommendations || [],
+          adaptations: result.feedback.adaptations || {},
+          reasoning: result.feedback.reasoning || '',
+          severity: result.feedback.severity || 'medium',
+          userMessage: result.feedback.userMessage || '',
+          source: result.feedback.source || 'ai'
+        };
+        
+        setAiAdjustment(adaptationFormat);
         setShowAiPanel(true);
       } else if (response.status === 404) {
         console.log('ℹ️ No stored AI feedback found for this session');
@@ -257,7 +267,11 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
     
     try {
       const response = await fetch(`/api/ai-feedback?sessionId=${sessionId}&userId=${userId}`);
-      return response.ok;
+      if (response.ok) {
+        const result = await response.json();
+        return result.success && result.feedback;
+      }
+      return false; // 404 or other error means no feedback
     } catch (error) {
       console.error('❌ Error checking AI feedback:', error);
       return false;
@@ -600,11 +614,16 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
         // Show AI adaptation modal/message
         setAiAdjustment(result.adaptation);
         setShowAiPanel(true);
-        
-        // 🚀 NEW: Mark that AI feedback now exists for this session
-        if (selectedSession) {
-          setHasAiFeedback(prev => ({ ...prev, [selectedSession.id]: true }));
-        }
+      }
+      
+      // 🚀 NEW: Always check if AI feedback was stored after submission
+      if (selectedSession) {
+        // Small delay to ensure database write completed
+        setTimeout(async () => {
+          const feedbackExists = await checkAiFeedbackExists(selectedSession.id);
+          setHasAiFeedback(prev => ({ ...prev, [selectedSession.id]: feedbackExists }));
+          console.log(`🔍 Post-submission check: AI feedback exists for ${selectedSession.id}: ${feedbackExists}`);
+        }, 1000);
       }
 
       // 🚀 NEW: Update AI prediction if received
