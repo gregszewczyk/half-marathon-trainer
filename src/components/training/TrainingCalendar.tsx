@@ -863,6 +863,25 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
     return session.distance || 0;
   };
 
+  // Helper function to get the original distance for "was km" display
+  const getOriginalDistance = (session: Session): number | null => {
+    // First check if originalDistance is explicitly stored
+    if (session.originalDistance) {
+      return session.originalDistance;
+    }
+    
+    // If session was AI modified but no originalDistance, try to extract from mainSet
+    if (session.aiModified && session.mainSet) {
+      const mainSetDistance = getMainSetDistance(session);
+      // Only show "was" if the mainSet distance differs from current distance
+      if (mainSetDistance !== session.distance) {
+        return mainSetDistance;
+      }
+    }
+    
+    return null;
+  };
+
   const getSessionText = (session: Session): JSX.Element => {
     let mainText = '';
     let details: string[] = [];
@@ -1629,11 +1648,14 @@ Keep it concise and motivational - this should make them feel good about their t
                                 Pace: {session.pace} <span className="opacity-75">(was {session.originalPace})</span>
                               </div>
                             )}
-                            {session.originalDistance && session.distance !== session.originalDistance && (
-                              <div className="ml-4">
-                                Distance: {session.distance}km <span className="opacity-75">(was {session.originalDistance}km)</span>
-                              </div>
-                            )}
+                            {(() => {
+                              const originalDistance = getOriginalDistance(session);
+                              return originalDistance && originalDistance !== session.distance ? (
+                                <div className="ml-4">
+                                  Distance: {session.distance}km <span className="opacity-75">(was {originalDistance}km)</span>
+                                </div>
+                              ) : null;
+                            })()}
                           </div>
                         )}
                         
@@ -1957,11 +1979,14 @@ Keep it concise and motivational - this should make them feel good about their t
                 <div className="text-xs text-gray-400 mb-1">DISTANCE</div>
                 <div className="text-lg font-bold text-white flex items-center gap-2">
                   {selectedSession.distance}km
-                  {selectedSession.aiModified && selectedSession.originalDistance !== selectedSession.distance && (
-                    <span className="text-xs text-cyan-400">
-                      (was {selectedSession.originalDistance}km)
-                    </span>
-                  )}
+                  {(() => {
+                    const originalDistance = getOriginalDistance(selectedSession);
+                    return originalDistance && originalDistance !== selectedSession.distance ? (
+                      <span className="text-xs text-cyan-400">
+                        (was {originalDistance}km)
+                      </span>
+                    ) : null;
+                  })()}
                 </div>
               </div>
               

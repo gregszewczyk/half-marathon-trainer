@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
         sessionType: 'RUNNING',
         aiModified: true,
         aiReason: {
-          contains: 'Distance corrected'
+          contains: 'Distance adjusted'
         }
       }
     });
