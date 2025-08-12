@@ -360,6 +360,9 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
   
   // 🧪 TEST: Regenerate warm-ups functionality  
   const [isRegeneratingWarmups, setIsRegeneratingWarmups] = useState(false);
+  
+  // 🤖 AI: Plan regeneration functionality
+  const [isRegeneratingPlan, setIsRegeneratingPlan] = useState(false);
 
   // Add this after your existing state variables
   const [isMobile, setIsMobile] = useState(false);
@@ -798,6 +801,74 @@ const TrainingCalendar: React.FC<AITrainingCalendarProps> = memo(({ userId = 'de
       alert('Failed to regenerate warm-ups. Check console for details.');
     } finally {
       setIsRegeneratingWarmups(false);
+    }
+  };
+
+  // 🤖 AI: Regenerate entire training plan based on performance
+  const handleAIRegeneratePlan = async () => {
+    if (isRegeneratingPlan || !userId) return;
+
+    const confirmed = confirm(
+      '🤖 AI PLAN REGENERATION\n\n' +
+      'This will analyze your recent performance and regenerate your entire training plan with:\n' +
+      '• Updated pace zones based on your actual fitness\n' +
+      '• Progressive session variety (tempo, intervals, race pace)\n' +
+      '• Proper periodization through build/peak/taper phases\n' +
+      '• Maintained club constraints (5km max Mon/Wed)\n' +
+      '• Potential goal time improvement if performance supports it\n\n' +
+      'This will replace all future sessions. Continue?'
+    );
+    
+    if (!confirmed) return;
+
+    setIsRegeneratingPlan(true);
+    
+    try {
+      console.log('🤖 Starting AI plan regeneration...');
+      
+      const response = await fetch('/api/ai-regenerate-plan', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          userId,
+          forceRegenerate: true 
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to regenerate plan: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('✅ AI plan regenerated:', result);
+
+      // Show detailed success message
+      const { summary, aiMessage } = result;
+      alert(
+        `🎉 AI PLAN REGENERATION COMPLETE!\n\n` +
+        `📊 Regenerated: ${summary.totalSessions} sessions across ${summary.weeksRegenerated} weeks\n` +
+        `🎯 Goal: ${summary.goalProgression.from} → ${summary.goalProgression.to}\n` +
+        `⚡ New paces: Easy ${summary.paceZones.easy}, Tempo ${summary.paceZones.tempo}, Race ${summary.paceZones.race}\n` +
+        `📈 Sessions: ${summary.phaseBreakdown.base} base, ${summary.phaseBreakdown.build} build, ${summary.phaseBreakdown.peak} peak, ${summary.phaseBreakdown.taper} taper\n\n` +
+        `${aiMessage}`
+      );
+
+      // Clear cache and reload to show new plan
+      const cacheKey = `sessions-${userId}`;
+      _sessionCache.delete(cacheKey);
+      
+      // Reload page after brief delay to show success message
+      setTimeout(() => {
+        window.location.reload();
+      }, 3000);
+
+    } catch (error) {
+      console.error('❌ Error regenerating AI plan:', error);
+      alert('Failed to regenerate AI plan. Check console for details.');
+    } finally {
+      setIsRegeneratingPlan(false);
     }
   };
 
@@ -1534,6 +1605,29 @@ Keep it concise and motivational - this should make them feel good about their t
                 <>
                   <Settings className="w-3 h-3" />
                   🔄 Regenerate
+                </>
+              )}
+            </button>
+            
+            {/* AI Plan Regeneration Button */}
+            <button
+              onClick={handleAIRegeneratePlan}
+              disabled={isRegeneratingPlan}
+              className={`px-2 py-1 rounded text-xs transition-colors flex items-center gap-1 ${
+                isRegeneratingPlan
+                  ? 'bg-gray-600 cursor-not-allowed text-gray-300'
+                  : 'bg-blue-600 hover:bg-blue-700 text-white'
+              }`}
+              title="🤖 AI Plan Regeneration - Analyze performance & regenerate smart training plan"
+            >
+              {isRegeneratingPlan ? (
+                <>
+                  <div className="w-3 h-3 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
+                  AI Working...
+                </>
+              ) : (
+                <>
+                  🤖 AI Regenerate
                 </>
               )}
             </button>
