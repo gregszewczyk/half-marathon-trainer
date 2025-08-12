@@ -46,8 +46,8 @@ function calculateNewGoalTime(currentGoal: string, performanceAnalysis: Performa
   return currentGoal;
 }
 
-// Calculate pace zones based on goal time
-function calculatePaceZones(goalTime: string): PaceZones {
+// Calculate pace zones based on goal time AND actual performance data
+function calculatePaceZones(goalTime: string, performanceAnalysis?: PerformanceAnalysis, recentFeedback?: any[]): PaceZones {
   const [hours, minutes, seconds] = goalTime.split(':').map(Number);
   const goalTimeSeconds = hours * 3600 + minutes * 60 + (seconds || 0);
   const goalPacePerKm = goalTimeSeconds / 21.0975;
@@ -57,7 +57,36 @@ function calculatePaceZones(goalTime: string): PaceZones {
   const tempoPace = racePace * 0.95; // 5% faster
   const thresholdPace = racePace * 0.92; // 8% faster  
   const intervalPace = racePace * 0.88; // 12% faster
-  const easyPace = racePace * 1.2; // 20% slower
+  
+  // 🚀 SMART EASY PACE: Use actual performance data instead of formula
+  let easyPace = racePace * 1.15; // Default: 15% slower (was 20%)
+  
+  if (recentFeedback && recentFeedback.length > 0) {
+    // Find recent easy runs to calculate actual easy pace
+    const easyRuns = recentFeedback.filter(f => 
+      f.sessionSubType === 'easy' && 
+      f.actualPace && 
+      f.rpe && f.rpe <= 6 // Only use low-effort easy runs
+    );
+    
+    if (easyRuns.length >= 2) {
+      // Calculate average actual easy pace
+      const easyPaceSeconds = easyRuns.map(run => {
+        const [min, sec] = run.actualPace.split(':').map(Number);
+        return min * 60 + sec;
+      });
+      
+      const avgEasyPace = easyPaceSeconds.reduce((a, b) => a + b, 0) / easyPaceSeconds.length;
+      
+      // Use actual performance but cap it within reasonable bounds
+      const maxEasyPace = racePace * 1.25; // No slower than 25% slower than race pace
+      const minEasyPace = racePace * 1.05; // No faster than 5% slower than race pace
+      
+      easyPace = Math.max(minEasyPace, Math.min(maxEasyPace, avgEasyPace));
+      
+      console.log(`🎯 Smart easy pace: ${easyRuns.length} recent easy runs averaged ${Math.floor(avgEasyPace/60)}:${Math.round(avgEasyPace%60).toString().padStart(2,'0')}`);
+    }
+  }
   
   const formatPace = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -72,6 +101,21 @@ function calculatePaceZones(goalTime: string): PaceZones {
     intervals: formatPace(intervalPace),
     race: formatPace(racePace)
   };
+}
+
+// Calculate appropriate long run starting pace (slightly slower than easy pace)
+function calculateLongRunPace(paceZones: PaceZones): string {
+  // Long runs should start 5-15 seconds slower than easy pace for progressive builds
+  const easyPaceSeconds = paceZones.easy.split(':').map(Number);
+  const easyPaceTotal = easyPaceSeconds[0] * 60 + easyPaceSeconds[1];
+  
+  // Add 10 seconds for conservative long run start pace
+  const longRunPaceTotal = easyPaceTotal + 10;
+  
+  const mins = Math.floor(longRunPaceTotal / 60);
+  const secs = longRunPaceTotal % 60;
+  
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
 // Generate session variety based on training phase
@@ -167,11 +211,11 @@ function generateSessionDescription(
       'Final race pace tune-up. Practice race day nutrition and rhythm.'
     }`,
     
-    long: `${distance}km long run at ${pace}/km. ${
-      distance <= 13 ? 'Focus on building aerobic endurance.' :
-      distance <= 18 ? 'Peak endurance building - practice race day fueling.' :
-      'Race simulation - practice everything from pace to nutrition.'
-    } ${week >= 9 ? 'Include 3-5km at goal pace in final 1/3.' : ''}`
+    long: `${distance}km progressive long run. Start at ${pace}/km and build throughout. ${
+      distance <= 13 ? 'Focus: Start easy, gradually increase to moderate pace in final third.' :
+      distance <= 18 ? 'Peak endurance: Start conservatively, build to race pace in final 3-5km. Practice race fueling.' :
+      'Race simulation: Progressive build from easy → moderate → race pace. Practice all race day elements.'
+    } ${week >= 9 ? 'Finish with 3-5km at goal race pace.' : 'Build effort gradually - this develops race fitness better than constant pace.'}`
   };
   
   return descriptions[sessionType] || descriptions.easy;
@@ -286,8 +330,8 @@ export async function POST(request: NextRequest) {
     
     console.log(`🎯 Goal progression: ${currentGoal} → ${suggestedGoal}`);
     
-    // Calculate new pace zones based on working goal
-    const paceZones = calculatePaceZones(workingGoal);
+    // Calculate new pace zones based on working goal AND recent performance
+    const paceZones = calculatePaceZones(workingGoal, performanceAnalysis, recentFeedback);
     console.log(`⚡ New pace zones:`, paceZones);
     
     // Get current week
@@ -358,28 +402,55 @@ export async function POST(request: NextRequest) {
           sessionType: 'RUNNING', 
           sessionSubType: 'long',
           distance: weekDistances[3],
-          pace: paceZones.easy, // Long runs at easy pace, with race pace segments added in description
+          pace: calculateLongRunPace(paceZones), // Long runs at appropriate progressive pace
           scheduledTime: '09:00',
           isRunningClub: false,
           isMoveable: true
+        },
+        
+        // Add gym sessions back (Tuesday, Friday)
+        {
+          dayOfWeek: 'Tuesday',
+          sessionType: 'GYM',
+          sessionSubType: 'pull',
+          duration: '60 min',
+          scheduledTime: '04:30',
+          isRunningClub: false,
+          isMoveable: true,
+          mainSet: 'Pull day: Back, biceps, posterior delts. Focus on pulling patterns to balance running.'
+        },
+        
+        {
+          dayOfWeek: 'Friday', 
+          sessionType: 'GYM',
+          sessionSubType: 'push',
+          duration: '60 min',
+          scheduledTime: '04:30',
+          isRunningClub: false,
+          isMoveable: true,
+          mainSet: 'Push day: Chest, shoulders, triceps. Maintain upper body strength for running posture.'
         }
       ];
       
       // Add detailed session information
       weekSessions.forEach(session => {
-        const warmupCooldown = generateWarmupCooldown(session.sessionSubType!, session.distance!);
+        // Only generate warmup/cooldown for running sessions
+        if (session.sessionType === 'RUNNING') {
+          const warmupCooldown = generateWarmupCooldown(session.sessionSubType!, session.distance!);
+          
+          session.warmup = warmupCooldown.warmup;
+          session.cooldown = warmupCooldown.cooldown;
+          session.mainSet = generateSessionDescription(
+            session.sessionSubType!,
+            session.distance!,
+            session.pace!,
+            week,
+            phase
+          );
+        }
+        // Gym sessions already have mainSet defined above
         
-        session.warmup = warmupCooldown.warmup;
-        session.cooldown = warmupCooldown.cooldown;
-        session.mainSet = generateSessionDescription(
-          session.sessionSubType!,
-          session.distance!,
-          session.pace!,
-          week,
-          phase
-        );
-        
-        // Add week and user info
+        // Add week and user info for all sessions
         session.week = week;
         session.userId = userId;
         session.planVersion = 'ai-regenerated';
